@@ -1,1 +1,1 @@
-# Actuarial-mathematics
+# Actuarial mathematics
