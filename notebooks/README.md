@@ -1,7 +1,7 @@
-# Notebook
+# Notebooks
 
-Conserva qui i notebook, organizzati per argomento. Indica linguaggio, versione, dipendenze, fonti dei dati e ordine di esecuzione.
+Store notebooks here, grouped by topic. Each notebook states its language and version, its dependencies, its data sources and, where relevant, the order in which the notebooks should be run.
 
-Prima di pubblicare, riavvia il kernel ed esegui tutte le celle in ordine. Rimuovi output con dati riservati o credenziali e risultati inutilmente voluminosi. Salva i file generati in `outputs/`.
+Before publishing a notebook, restart the kernel and run all cells in order. Remove outputs that contain confidential data or credentials, as well as unnecessarily large results, and save generated files to `outputs/`.
 
-Aggiungi i notebook pubblicati al catalogo nel [README principale](../README.md).
+Add every published notebook to the catalogue in the [main README](../README.md).
