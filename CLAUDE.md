@@ -1,32 +1,32 @@
-# Actuarial mathematics
+# Actuarial Mathematics
 
-Repository di script e notebook di matematica attuariale.
+Repository of scripts and notebooks on the actuarial mathematics of life insurance.
 
-## Organizzazione
+## Organization
 
-- Leggi il README principale e la documentazione della cartella su cui lavori.
-- Inserisci ogni progetto in `scripts/<nome_progetto>/` con un README dedicato; usa nomi descrittivi in snake_case.
-- Conserva notebook in `notebooks/`, verifiche in `tests/` e piccoli dati sintetici o pubblici redistribuibili in `data/examples/`.
-- Scrivi i risultati generati in `outputs/` e crea la cartella se manca.
-- Usa percorsi relativi alla radice del repository; evita percorsi personali assoluti.
-- Scrivi la documentazione in italiano e mantieni coerenti i nomi nel codice esistente.
+- Read the main README and the documentation of the folder you are working in.
+- Place each project in `scripts/<project_name>/` with its own README; use descriptive snake_case names.
+- Keep notebooks in `notebooks/`, tests in `tests/`, and small synthetic or publicly redistributable data in `data/examples/`.
+- Write generated results to `outputs/`, creating the folder if it does not exist.
+- Use paths relative to the repository root; never use absolute personal paths.
+- Write documentation, code comments and commit messages in clear, professional English, and keep naming consistent with the existing code.
 
-## Codice e verifiche
+## Code and verification
 
-- Rispetta il linguaggio del progetto. Non introdurre un framework o dipendenze senza una necessità concreta.
-- Al primo script, documenta la versione del linguaggio e crea il file delle dipendenze appropriato se servono pacchetti esterni.
-- Documenta scopo, input, output e comando esatto di esecuzione usando `docs/modello-script.md`.
-- Rendi espliciti formule, ipotesi, unità di misura, convenzioni sui tassi e fonti utilizzate.
-- Per calcoli nuovi o modificati, verifica almeno un risultato noto e i casi limite pertinenti. Usa tolleranze numeriche motivate.
-- Fissa e documenta il seme degli esempi stocastici quando serve riproducibilità.
-- Esegui le verifiche pertinenti disponibili e riporta i comandi e gli esiti reali. Non dichiarare test superati se non sono stati eseguiti.
-- Al momento il repository contiene la struttura iniziale: non esistono ancora un comando di test generale o un workflow CI.
-- Aggiorna il catalogo del README quando aggiungi uno script.
+- Respect the language of each project. Do not introduce frameworks or dependencies without a concrete need.
+- With the first script, document the language version and create the appropriate dependency file if external packages are required.
+- Document purpose, inputs, outputs and the exact run command using `docs/script-template.md`.
+- State formulas, assumptions, units of measure, interest-rate conventions and sources explicitly.
+- For new or modified calculations, verify at least one known result and the relevant edge cases, using justified numerical tolerances.
+- Fix and document the random seed of stochastic examples whenever reproducibility matters.
+- Run the relevant available checks and report the actual commands and outcomes. Never state that tests passed if they were not run.
+- The repository currently contains only its initial structure: there is no general test command or CI workflow yet.
+- Update the catalogue in the main README whenever you add a script or notebook.
 
-## Pubblicazione
+## Publishing
 
-- Segui `docs/pubblicazione.md` per branch, commit e pull request.
-- Controlla `git status` e il diff prima di creare un commit; seleziona i file pertinenti alla modifica.
-- Non inserire chiavi API, token, password, dati personali, dati riservati o cronologie delle sessioni.
-- Usa variabili d'ambiente per le credenziali; gli eventuali file `.env.example` devono contenere solo valori fittizi.
-- Mantieni la licenza MIT esistente e cita le fonti del codice riutilizzato.
+- Follow `docs/publishing.md` for branches, commits and pull requests.
+- Review `git status` and the diff before committing, and stage only the files relevant to the change.
+- Never commit API keys, tokens, passwords, personal data, confidential data or session transcripts.
+- Use environment variables for credentials; any `.env.example` file must contain placeholder values only.
+- Keep the existing MIT license and credit the sources of any reused code.

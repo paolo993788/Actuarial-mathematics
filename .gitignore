@@ -1,4 +1,4 @@
-# Credenziali e configurazione personale
+# Credentials and personal configuration
 .env
 .env.*
 !.env.example
@@ -11,19 +11,19 @@ credentials.json
 .Renviron.*
 !.Renviron.example
 
-# File personali di Claude Code
+# Personal Claude Code files
 CLAUDE.local.md
 .claude/settings.local.json
 .claude/worktrees/
 .claude/projects/
 .claude/sessions/
 
-# Dati locali: pubblicare soltanto gli esempi scelti
+# Local data: publish only selected examples
 /data/*
 !/data/README.md
 !/data/examples/
 
-# Risultati e file di lavoro
+# Generated results and working files
 /outputs/*
 !/outputs/README.md
 /work/
@@ -31,7 +31,7 @@ CLAUDE.local.md
 /logs/
 *.log
 
-# Python e notebook
+# Python and notebooks
 __pycache__/
 *.py[cod]
 .venv/
@@ -57,7 +57,7 @@ renv/staging/
 # JavaScript
 node_modules/
 
-# Editor e sistema operativo
+# Editors and operating systems
 .vscode/
 .idea/
 .DS_Store
