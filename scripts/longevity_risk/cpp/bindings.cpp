@@ -41,6 +41,14 @@ lr::LeeCarter make_model(int age_min, const DoubleArray& ax, const DoubleArray& 
 
 }  // namespace
 
+std::vector<int> to_int_vector(const py::array_t<int, py::array::c_style | py::array::forcecast>& a) {
+    const auto buf = a.request();
+    const int* ptr = static_cast<const int*>(buf.ptr);
+    return std::vector<int>(ptr, ptr + buf.size);
+}
+
+using IntArray = py::array_t<int, py::array::c_style | py::array::forcecast>;
+
 PYBIND11_MODULE(_core, m) {
     m.doc() = "C++ Lee-Carter simulation and life annuity valuation engine for longevity_risk.";
 
@@ -110,4 +118,50 @@ PYBIND11_MODULE(_core, m) {
         py::arg("drift_se"), py::arg("k_first"), py::arg("n_increments"), py::arg("age0"), py::arg("discount"),
         py::arg("n_scenarios"), py::arg("seed") = 12345, py::arg("n_threads") = 0,
         "One-year value-at-risk view of longevity trend risk with re-estimation of the drift.");
+
+    m.def(
+        "simulate_portfolio",
+        [](int age_min, const DoubleArray& ax, const DoubleArray& bx, double k_last, double drift, double sigma,
+           double drift_se, const IntArray& ages, const DoubleArray& amounts, const DoubleArray& discount,
+           long long n_scenarios, bool idiosyncratic, std::uint64_t seed, int n_threads) {
+            const lr::LeeCarter lc = make_model(age_min, ax, bx, k_last, drift, sigma, drift_se);
+            const auto a = to_int_vector(ages);
+            const auto w = to_vector(amounts), v = to_vector(discount);
+            lr::PortfolioSimulation res;
+            {
+                py::gil_scoped_release release;
+                res = lr::simulate_portfolio(lc, a, w, v, n_scenarios, idiosyncratic, seed, n_threads);
+            }
+            py::dict d;
+            d["pv_systematic"] = to_array(res.pv_systematic);
+            d["pv_realised"] = to_array(res.pv_realised);
+            return d;
+        },
+        py::arg("age_min"), py::arg("ax"), py::arg("bx"), py::arg("k_last"), py::arg("drift"), py::arg("sigma"),
+        py::arg("drift_se"), py::arg("ages"), py::arg("amounts"), py::arg("discount"), py::arg("n_scenarios"),
+        py::arg("idiosyncratic") = false, py::arg("seed") = 12345, py::arg("n_threads") = 0,
+        "Monte Carlo present value of a portfolio of annuities with different ages and amounts.");
+
+    m.def(
+        "portfolio_one_year",
+        [](int age_min, const DoubleArray& ax, const DoubleArray& bx, double k_last, double drift, double sigma,
+           double drift_se, double k_first, int n_increments, const IntArray& ages, const DoubleArray& amounts,
+           const DoubleArray& discount, long long n_scenarios, std::uint64_t seed, int n_threads) {
+            const lr::LeeCarter lc = make_model(age_min, ax, bx, k_last, drift, sigma, drift_se);
+            const auto a = to_int_vector(ages);
+            const auto w = to_vector(amounts), v = to_vector(discount);
+            lr::OneYearRecalibration res;
+            {
+                py::gil_scoped_release release;
+                res = lr::portfolio_one_year(lc, k_first, n_increments, a, w, v, n_scenarios, seed, n_threads);
+            }
+            py::dict d;
+            d["best_estimate"] = res.best_estimate;
+            d["value"] = to_array(res.value);
+            return d;
+        },
+        py::arg("age_min"), py::arg("ax"), py::arg("bx"), py::arg("k_last"), py::arg("drift"), py::arg("sigma"),
+        py::arg("drift_se"), py::arg("k_first"), py::arg("n_increments"), py::arg("ages"), py::arg("amounts"),
+        py::arg("discount"), py::arg("n_scenarios"), py::arg("seed") = 12345, py::arg("n_threads") = 0,
+        "One-year longevity trend risk of a portfolio of annuities (same scenarios for every member).");
 }
