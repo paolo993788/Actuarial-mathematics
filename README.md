@@ -13,13 +13,15 @@ The repository covers the work of a life or pension actuary from data to decisio
 
 ## Highlights
 
-| Area | What is done |
-| --- | --- |
-| Pension buy-in pricing (case study) | Quote for an Italian pension fund with 1,500 pensioners: cohort mortality basis, Smith-Wilson curve, best estimate and duration, standard-formula SCR (longevity, expense, interest rate, operational), cost-of-capital risk margin, premium with a shareholder hurdle rate, internal-model cross-check, sensitivities and a board summary |
-| Mortality projection | Poisson Lee-Carter by sex on Eurostat deaths and population, pandemic years excluded, deviance diagnostics, out-of-sample backtest of forecast intervals, period versus cohort life expectancy |
-| Longevity capital | Run-off and one-year value at risk (re-estimation of the trend, Richards et al. 2014) against the 20% Solvency II longevity shock, by age and interest-rate level; pooling of idiosyncratic risk |
-| Discounting | ECB AAA yield curve extrapolated with the Smith-Wilson method and EIOPA convergence criterion |
-| Engineering | C++17 engine with portable, thread-independent random streams: 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 38 automated tests against closed forms, exact moments and NumPy references |
+Results on official data: Eurostat deaths and population for Italy, 1992-2024, and the ECB AAA yield curve at 31 December 2024.
+
+| Area | What is done | Key result |
+| --- | --- | --- |
+| Pension buy-in pricing (case study) | Quote for an Italian pension fund with 1,500 pensioners (illustrative membership): cohort mortality basis, Smith-Wilson curve, best estimate and duration, standard-formula SCR (longevity, expense, interest rate, operational), cost-of-capital risk margin, premium with a shareholder hurdle rate, internal-model cross-check, sensitivities and a board summary | Premium 106.9% of the best estimate (EUR 410 million for EUR 28 million of annual pensions), 1.12 times the fund's period-table book value, the gap being mostly future mortality improvements; SCR 7.0% and risk margin 4.2% of the best estimate; indexing pensions by 2% a year would add 23.5% to the premium |
+| Mortality projection | Poisson Lee-Carter by sex on Eurostat deaths and population, pandemic years excluded, deviance diagnostics, out-of-sample backtest of forecast intervals, period versus cohort life expectancy | Mortality at 65 improves by about 2.6% a year for men and 1.6% for women; life expectancy at 65 in 2024 is 19.8 years for men and 22.8 for women on a period basis, 21.4 and 24.4 on a cohort basis; including 2020-2022 would raise the estimated trend volatility by 76% for men; the 95% forecast intervals contain all ten out-of-sample years |
+| Longevity capital | Run-off and one-year value at risk (re-estimation of the trend, Richards et al. 2014) against the 20% Solvency II longevity shock, by age and interest-rate level; pooling of idiosyncratic risk | For a male annuitant aged 65 the standard-formula shock costs 5.5% of the best estimate, against 4.4% for the run-off 99.5% VaR and 1.7% for the one-year VaR: the standard formula is prudent from 65 upwards (13.4% against 2.4% at 85), but not at 55, where the run-off VaR (3.9%) exceeds the shock (3.5%) |
+| Discounting | ECB AAA yield curve extrapolated with the Smith-Wilson method and EIOPA convergence criterion | Convergence to the 3.30% ultimate forward rate within 1 basis point at 60 years |
+| Engineering | C++17 engine with portable, thread-independent random streams, NumPy reference implementations | 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 38 automated tests against closed forms, exact moments and NumPy references |
 
 ## Catalogue
 
