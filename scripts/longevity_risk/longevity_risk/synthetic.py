@@ -50,3 +50,19 @@ def deaths_and_exposures(ages=range(50, 100), years=range(1980, 2024), drift=-1.
     E = pd.DataFrame(exposures, index=D.index, columns=D.columns)
     D.attrs["source"] = E.attrs["source"] = f"synthetic Lee-Carter population (seed {seed}), not official data"
     return D, E, {"ax": ax, "bx": bx, "kt": kt}
+
+
+def pensioners(n=1500, share_male=0.6, seed=11):
+    """Synthetic membership of a pension fund in payment (illustrative, not real data).
+
+    Ages 60-95 with a mode around 70; annual pensions lognormal (median EUR 18,000
+    for men and EUR 14,000 for women) with a heavy right tail.
+    """
+    rng = np.random.default_rng(seed)
+    sex = np.where(rng.random(n) < share_male, "M", "F")
+    age = np.clip(np.round(60 + rng.gamma(shape=3.0, scale=4.0, size=n)), 60, 95).astype(int)
+    median = np.where(sex == "M", 18_000.0, 14_000.0)
+    pension = np.round(median * np.exp(0.45 * rng.standard_normal(n)), -1)
+    frame = pd.DataFrame({"member": np.arange(1, n + 1), "sex": sex, "age": age, "pension": pension})
+    frame.attrs["source"] = f"synthetic pension fund membership (seed {seed}), not real data"
+    return frame

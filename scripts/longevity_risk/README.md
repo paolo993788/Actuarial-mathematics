@@ -1,6 +1,6 @@
 # Longevity risk: Lee-Carter projections and C++ Monte Carlo valuation of life annuities
 
-Python package with a C++17 engine (pybind11) to project mortality with the Lee-Carter model, value life annuities under stochastic mortality and compare internal-model measures of longevity risk with the Solvency II standard formula. It downloads official Eurostat mortality data and the ECB euro area yield curve, which is extrapolated with the Smith-Wilson method used by EIOPA.
+Python package with a C++17 engine (pybind11) to project mortality with the Lee-Carter model, value life annuities and portfolios of pensioners under stochastic mortality, and compute Solvency II quantities: standard-formula SCR (longevity, expense, interest rate, operational), cost-of-capital risk margin and internal-model measures of longevity risk. It downloads official Eurostat mortality data and the ECB euro area yield curve, which is extrapolated with the Smith-Wilson method used by EIOPA.
 
 ## Requirements
 
@@ -44,6 +44,7 @@ python -m longevity_risk.data --geo IT --sex M F --yield-curve 2024-12-01 2024-1
 | --- | --- |
 | [`notebooks/mortality_projection/lee_carter_mortality_projection.ipynb`](../../notebooks/mortality_projection/lee_carter_mortality_projection.ipynb) | Poisson and SVD Lee-Carter fits on Eurostat data for men and women, residual diagnostics, random walk with drift with and without the pandemic years, out-of-sample backtest, period versus cohort life expectancy. |
 | [`notebooks/longevity_risk/annuity_longevity_risk_solvency.ipynb`](../../notebooks/longevity_risk/annuity_longevity_risk_solvency.ipynb) | Smith-Wilson curve from the ECB curve, best estimates of life annuities, run-off and one-year value at risk, idiosyncratic risk and pooling, comparison with the Solvency II longevity shock and interest-rate sensitivity. |
+| [`notebooks/case_studies/pension_buy_in_pricing.ipynb`](../../notebooks/case_studies/pension_buy_in_pricing.ipynb) | Case study: buy-in quote for a pension fund (cash flows, best estimate, standard-formula SCR, risk margin, premium with hurdle rate, internal-model cross-check, sensitivities, board summary). An optional real membership file is read from `BUYIN_MEMBERSHIP_CSV` and must never be committed. |
 
 The country (default Italy, `COUNTRY = "IT"`), sex, age range and other parameters are set in the first code cell of each notebook. Official data are downloaded by default; set `LONGEVITY_RISK_DATA_MODE=synthetic` before starting Jupyter to run offline on simulated data.
 
@@ -63,6 +64,7 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 | --- | --- |
 | `outputs/lee_carter/*.png` | Crude rates, Lee-Carter parameters, residuals, backtest and projections. |
 | `outputs/longevity_scr/*.png`, `scr_comparison.csv` | Discount curve, run-off distribution and capital requirements by age. |
+| `outputs/buy_in_pricing/*.png`, `board_summary.txt` | Membership, cash flows, premium waterfall, sensitivities and the board summary of the case study. |
 
 ## Method
 
@@ -76,13 +78,15 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 
 **Discount curve** (`longevity_risk/curves.py`): Smith-Wilson extrapolation of the ECB Svensson zero-coupon prices at 1-20 years (last liquid point 20 years for the euro), $\omega = \ln(1 + \text{UFR})$, $\alpha$ = smallest value $\ge 0.05$ such that the one-year forward rate at the convergence point $\max(\text{LLP} + 40, 60)$ is within 1 basis point of the UFR (bisection to $10^{-6}$). EIOPA applies the method to swap rates with a credit risk adjustment; here it is applied to the ECB AAA government curve for illustration. The notebooks use UFR = 3.30%.
 
-**Solvency II** (`longevity_risk/solvency.py`): standard-formula longevity SCR = $\text{BE}(0.8\,q) - \text{BE}(q)$ (Delegated Regulation (EU) 2015/35, Article 138), without shocking the closing age.
+**Solvency II** (`longevity_risk/solvency.py`): standard-formula longevity SCR = $\text{BE}(0.8\,q) - \text{BE}(q)$ (Delegated Regulation (EU) 2015/35, Article 138), without shocking the closing age; interest-rate SCR with the relative up and down shocks of Articles 166-167 (linear interpolation between 20 and 90 years, up shock of at least one percentage point, no down shock for negative rates); aggregation with the market-life correlation of 0.25 (Directive, Annex IV); operational risk $\min(30\%\,\text{BSCR}, 0.45\%\,\text{TP})$ (Article 204); risk margin with a 6% cost of capital (Article 39) and SCR projected in proportion to the best-estimate run-off.
+
+**Portfolios** (`longevity_risk/portfolio.py`, `cpp/mortality.hpp`): members with sex, age and annual pension; expected cash flows under the central projection (optionally with shocked mortality or indexation); C++ simulation of the whole portfolio in which every member shares the scenario of the period index and, optionally, has an individually simulated lifetime; one-year trend risk of the portfolio. The two sexes use the same random scenarios (perfectly correlated trends, a prudent simplification).
 
 **Random numbers and parallelism**: xoshiro256** with SplitMix64 seeding and Box-Muller normals (portable across compilers); scenario $s$ uses its own random stream derived from `(seed, s)`, so results do not depend on the number of threads. The notebooks fix `SEED = 20240101` and report Monte Carlo standard errors.
 
 ## Verification
 
-Run `python -m pytest tests/longevity_risk` from the repository root (31 tests, a few seconds). Main checks:
+Run `python -m pytest tests/longevity_risk` from the repository root (38 tests, a few seconds). Main checks:
 
 | Check | Tolerance and justification |
 | --- | --- |
@@ -100,13 +104,18 @@ Run `python -m pytest tests/longevity_risk` from the repository root (31 tests, 
 | Smith-Wilson fits the input prices; convergence gap at 60 years; minimality of $\alpha$; flat UFR input gives $\zeta = 0$ | relative $10^{-12}$; 1 bp; $\alpha - 10^{-4}$ fails; $10^{-10}$ |
 | Standard-formula shock with constant $q$ | closed form, relative $10^{-12}$ |
 | Eurostat JSON-stat and ECB CSV parsers | exact on sample documents |
+| Single-member portfolio equals the single-annuity engine; portfolio one-year value equals the weighted sum of members | relative $10^{-13}$ and $10^{-12}$ (same random streams) |
+| Portfolio cash flows reproduce the best estimates of the members | relative $10^{-12}$ |
+| Idiosyncratic risk of a heterogeneous portfolio: mean and variance against the exact sum of individual variances | 4 standard errors; 5% |
+| Interest-rate shock table, interpolation, minimum up shock and negative rates; SCR of a single cash flow | exact values |
+| Risk margin with constant SCR and flat curve; BSCR aggregation; operational risk cap; best-estimate run-off | closed forms |
 
 ## References
 
 - Börger, M. (2010). Deterministic shock vs. stochastic value-at-risk: an analysis of the Solvency II standard model approach to longevity risk. *Blätter der DGVFM*, 31(2), 225-259.
 - Blackman, D. and Vigna, S. (2021). Scrambled linear pseudorandom number generators. *ACM Transactions on Mathematical Software*, 47(4). Public-domain reference code: https://prng.di.unimi.it/
 - Brouhns, N., Denuit, M. and Vermunt, J. K. (2002). A Poisson log-bilinear regression approach to the construction of projected lifetables. *Insurance: Mathematics and Economics*, 31(3), 373-393.
-- Commission Delegated Regulation (EU) 2015/35 of 10 October 2014 supplementing Directive 2009/138/EC (Solvency II), Article 138.
+- Commission Delegated Regulation (EU) 2015/35 of 10 October 2014 supplementing Directive 2009/138/EC (Solvency II), Articles 39, 138, 140, 166, 167 and 204; Directive 2009/138/EC, Annex IV.
 - EIOPA. Technical documentation of the methodology to derive EIOPA's risk-free interest rate term structures. https://www.eiopa.europa.eu/tools-and-data/risk-free-interest-rate-term-structures_en
 - Lee, R. D. and Carter, L. R. (1992). Modeling and forecasting U.S. mortality. *Journal of the American Statistical Association*, 87(419), 659-671.
 - Richards, S. J., Currie, I. D. and Ritchie, G. P. (2014). A value-at-risk framework for longevity trend risk. *British Actuarial Journal*, 19(1), 116-139.

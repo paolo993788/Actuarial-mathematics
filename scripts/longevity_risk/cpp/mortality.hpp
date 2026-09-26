@@ -187,4 +187,109 @@ inline OneYearRecalibration one_year_recalibration(const LeeCarter& lc, double k
     return out;
 }
 
+
+// ---------------------------------------------------------------------------
+// Portfolios of annuitants with different ages and annual amounts.
+
+struct PortfolioGroups {
+    std::vector<int> ages;          // distinct ages, ascending
+    std::vector<double> totals;     // total annual amount per distinct age
+    std::vector<std::size_t> group; // group index of each member
+};
+
+inline PortfolioGroups group_by_age(const LeeCarter& lc, const std::vector<int>& ages, const std::vector<double>& amounts) {
+    if (ages.size() != amounts.size() || ages.empty()) throw std::invalid_argument("ages and amounts must be non-empty and of equal length");
+    PortfolioGroups g;
+    g.ages = ages;
+    std::sort(g.ages.begin(), g.ages.end());
+    g.ages.erase(std::unique(g.ages.begin(), g.ages.end()), g.ages.end());
+    for (int a : g.ages) horizon_for(lc, a);  // range check
+    g.totals.assign(g.ages.size(), 0.0);
+    g.group.resize(ages.size());
+    for (std::size_t i = 0; i < ages.size(); ++i) {
+        const std::size_t j = static_cast<std::size_t>(std::lower_bound(g.ages.begin(), g.ages.end(), ages[i]) - g.ages.begin());
+        g.group[i] = j;
+        g.totals[j] += amounts[i];
+    }
+    return g;
+}
+
+struct PortfolioSimulation {
+    std::vector<double> pv_systematic;  // sum_i amount_i * a_{x_i} given the scenario
+    std::vector<double> pv_realised;    // with simulated individual lifetimes (if requested)
+};
+
+// Scenario s draws the drift and the path of k exactly as simulate_annuity
+// (same random stream), so a single-member portfolio reproduces it. Members
+// share the scenario (systematic risk); with `idiosyncratic` each member's
+// curtate lifetime is then drawn by inversion.
+inline PortfolioSimulation simulate_portfolio(const LeeCarter& lc, const std::vector<int>& ages, const std::vector<double>& amounts,
+                                              const std::vector<double>& discount, long long n_scenarios, bool idiosyncratic,
+                                              std::uint64_t seed, int n_threads = 0) {
+    lc.validate();
+    const PortfolioGroups g = group_by_age(lc, ages, amounts);
+    const int H_max = horizon_for(lc, g.ages.front());
+    if (static_cast<int>(discount.size()) < H_max) throw std::invalid_argument("discount factors must cover the whole horizon");
+    std::vector<double> cum_v(H_max);
+    double acc = 0.0;
+    for (int t = 0; t < H_max; ++t) cum_v[t] = (acc += discount[t]);
+
+    PortfolioSimulation out;
+    const std::size_t n = static_cast<std::size_t>(n_scenarios);
+    out.pv_systematic.assign(n, 0.0);
+    if (idiosyncratic) out.pv_realised.assign(n, 0.0);
+    parallel_for(n, n_threads, [&](std::size_t s) {
+        Xoshiro256 rng(seed, s);
+        std::vector<double> k(H_max);
+        const double drift = lc.drift + lc.drift_se * rng.normal();
+        double kt = lc.k_last;
+        for (int h = 0; h < H_max; ++h) {
+            kt += drift + lc.sigma * rng.normal();
+            k[h] = kt;
+        }
+        std::vector<std::vector<double>> S(g.ages.size());
+        double systematic = 0.0;
+        for (std::size_t j = 0; j < g.ages.size(); ++j) {
+            const int H = horizon_for(lc, g.ages[j]);
+            S[j].resize(H + 1);
+            cohort_survival(lc, g.ages[j], k.data(), H, S[j].data());
+            systematic += g.totals[j] * annuity_due(S[j].data(), discount.data(), H);
+        }
+        out.pv_systematic[s] = systematic;
+        if (idiosyncratic) {
+            double realised = 0.0;
+            for (std::size_t i = 0; i < ages.size(); ++i) {
+                const std::vector<double>& Sj = S[g.group[i]];
+                const double u = rng.uniform();
+                const auto it = std::partition_point(Sj.begin() + 1, Sj.end(), [u](double surv) { return surv > u; });
+                realised += amounts[i] * cum_v[static_cast<std::size_t>(it - (Sj.begin() + 1))];
+            }
+            out.pv_realised[s] = realised;
+        }
+    });
+    return out;
+}
+
+// One-year view for a portfolio: the value of each member follows
+// one_year_recalibration with the same random stream, so the portfolio value
+// is sum_i amount_i * X_{x_i} scenario by scenario.
+inline OneYearRecalibration portfolio_one_year(const LeeCarter& lc, double k_first, int n_increments, const std::vector<int>& ages,
+                                               const std::vector<double>& amounts, const std::vector<double>& discount,
+                                               long long n_scenarios, std::uint64_t seed, int n_threads = 0) {
+    lc.validate();
+    const PortfolioGroups g = group_by_age(lc, ages, amounts);
+    OneYearRecalibration total;
+    total.value.assign(static_cast<std::size_t>(n_scenarios), 0.0);
+    for (std::size_t j = 0; j < g.ages.size(); ++j) {
+        const OneYearRecalibration r = one_year_recalibration(lc, k_first, n_increments, g.ages[j], discount, n_scenarios, seed, n_threads);
+        total.best_estimate += g.totals[j] * r.best_estimate;
+        for (std::size_t s = 0; s < total.value.size(); ++s) total.value[s] += g.totals[j] * r.value[s];
+        if (j == 0) {
+            total.k_next = r.k_next;
+            total.drift_next = r.drift_next;
+        }
+    }
+    return total;
+}
+
 }  // namespace lr
