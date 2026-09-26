@@ -65,6 +65,7 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 | `outputs/lee_carter/*.png` | Crude rates, Lee-Carter parameters, residuals, backtest and projections. |
 | `outputs/longevity_scr/*.png`, `scr_comparison.csv` | Discount curve, run-off distribution and capital requirements by age. |
 | `outputs/buy_in_pricing/*.png`, `board_summary.txt` | Membership, cash flows, premium waterfall, sensitivities and the board summary of the case study. |
+| `docs/figures/*-light.png`, `*-dark.png` | README charts drawn by `python -m longevity_risk.readme_figures` (official data; `--synthetic` offline); the only generated files committed. |
 
 ## Method
 
@@ -86,7 +87,7 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 
 ## Verification
 
-Run `python -m pytest tests/longevity_risk` from the repository root (38 tests, a few seconds). Main checks:
+Run `python -m pytest tests/longevity_risk` from the repository root (39 tests, a few seconds). Main checks:
 
 | Check | Tolerance and justification |
 | --- | --- |

@@ -21,7 +21,26 @@ Results on official data: Eurostat deaths and population for Italy, 1992-2024, a
 | Mortality projection | Poisson Lee-Carter by sex on Eurostat deaths and population, pandemic years excluded, deviance diagnostics, out-of-sample backtest of forecast intervals, period versus cohort life expectancy | Mortality at 65 improves by about 2.6% a year for men and 1.6% for women; life expectancy at 65 in 2024 is 19.8 years for men and 22.8 for women on a period basis, 21.4 and 24.4 on a cohort basis; including 2020-2022 would raise the estimated trend volatility by 76% for men; the 95% forecast intervals contain all ten out-of-sample years |
 | Longevity capital | Run-off and one-year value at risk (re-estimation of the trend, Richards et al. 2014) against the 20% Solvency II longevity shock, by age and interest-rate level; pooling of idiosyncratic risk | For a male annuitant aged 65 the standard-formula shock costs 5.5% of the best estimate, against 4.4% for the run-off 99.5% VaR and 1.7% for the one-year VaR: the standard formula is prudent from 65 upwards (13.4% against 2.4% at 85), but not at 55, where the run-off VaR (3.9%) exceeds the shock (3.5%) |
 | Discounting | ECB AAA yield curve extrapolated with the Smith-Wilson method and EIOPA convergence criterion | Convergence to the 3.30% ultimate forward rate within 1 basis point at 60 years |
-| Engineering | C++17 engine with portable, thread-independent random streams, NumPy reference implementations | 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 38 automated tests against closed forms, exact moments and NumPy references |
+| Engineering | C++17 engine with portable, thread-independent random streams, NumPy reference implementations | 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 39 automated tests against closed forms, exact moments and NumPy references |
+
+## Charts
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/mortality_rates-dark.png">
+  <img alt="Central death rates by age 50-99 on a log scale for men and women in Italy in selected years from 1992 to 2024: each curve lies below the previous one at almost every age, with the largest falls between 50 and 85." src="docs/figures/mortality_rates-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/life_expectancy_65-dark.png">
+  <img alt="Period life expectancy at 65 in Italy, observed 1992-2024 and projected to 2050 with a 95% interval: men rise from 15.5 to 19.8 years and are projected at 22.7 years in 2050; women rise from 19.2 to 22.8 and are projected at 25.3; the 2020 pandemic dip is visible." src="docs/figures/life_expectancy_65-light.png">
+</picture>
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/longevity_capital-dark.png">
+  <img alt="Grouped bars of longevity capital for a male annuity as % of the best estimate at ages 55, 65, 75 and 85: standard formula 3.5, 5.5, 8.5 and 13.4; run-off VaR 3.9, 4.4, 4.0 and 2.4; one-year VaR 1.3, 1.7, 2.0 and 1.6." src="docs/figures/longevity_capital-light.png">
+</picture>
+
+The charts are drawn by `python -m longevity_risk.readme_figures` with the same data, model and seeds as the notebooks (light and dark variants in `docs/figures/`).
 
 ## Catalogue
 
