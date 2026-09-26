@@ -2,6 +2,7 @@
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
+![R](https://img.shields.io/badge/R-4.2%2B-276DC3?logo=r&logoColor=white)
 ![pybind11](https://img.shields.io/badge/bindings-pybind11-5C6BC0)
 ![Tests](https://img.shields.io/badge/tests-pytest-0A9EDC?logo=pytest&logoColor=white)
 ![Data](https://img.shields.io/badge/data-Eurostat%20%7C%20ECB-2E7D32)
@@ -50,6 +51,7 @@ The charts are drawn by `python -m longevity_risk.readme_figures` with the same 
 | [Pension buy-in pricing](notebooks/case_studies/pension_buy_in_pricing.ipynb) | What premium should an insurer quote to take over a pension fund's liabilities, and how much capital does it need? | Eurostat, ECB; illustrative membership |
 | [Lee-Carter mortality projection](notebooks/mortality_projection/lee_carter_mortality_projection.ipynb) | How fast is Italian mortality improving, how reliable are the forecasts, and what is the cohort life expectancy at 65? | Eurostat `demo_magec`, `demo_pjan` |
 | [Longevity risk and Solvency II](notebooks/longevity_risk/annuity_longevity_risk_solvency.ipynb) | Is the standard-formula longevity shock prudent compared with stochastic value-at-risk measures? | Eurostat, ECB |
+| [Lee-Carter in R](notebooks/r_crosschecks/lee_carter_gnm_r.ipynb) (R) | Does an independent R fit (gnm) reproduce the mortality basis, and how much does the choice of the trend model matter? | Eurostat `demo_magec`, `demo_pjan` |
 
 Each notebook states its assumptions and conventions, fixes its random seeds, reports Monte Carlo errors and ends with conclusions and limitations. Figures and tables are written to `outputs/`.
 
@@ -78,12 +80,14 @@ python -m pytest tests/longevity_risk
 
 Open a notebook in Visual Studio Code (extensions *Python*, *Jupyter* and *C/C++*) and select the `.venv` environment as kernel. Official data are downloaded and cached on first use; set `LONGEVITY_RISK_DATA_MODE=synthetic` to work offline. The [project README](scripts/longevity_risk/README.md) documents methods, conventions and the validation table.
 
+The notebooks are stored with the outputs of a full run on official data (September 2026), so tables and charts can be read directly on GitHub. The R notebooks in [`notebooks/r_crosschecks/`](notebooks/r_crosschecks/README.md) recompute the main results with independent R packages; they need R 4.2 or later: run `Rscript notebooks/r_crosschecks/install_packages.R` once and select the **R** kernel.
+
 ## Repository layout
 
 ```text
 .
 ├── scripts/longevity_risk/   C++ engine (cpp/), Python package, build and dependency files
-├── notebooks/                case_studies/, mortality_projection/, longevity_risk/
+├── notebooks/                case_studies/, mortality_projection/, longevity_risk/, r_crosschecks/ (R)
 ├── tests/longevity_risk/     validation suite (pytest)
 ├── docs/                     project README template and publishing workflow
 ├── data/                     download cache (ignored by Git) and small examples
