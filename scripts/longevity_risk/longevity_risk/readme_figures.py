@@ -16,13 +16,17 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from . import curves, data, lee_carter as lc, life_table as lt, simulation as sim, solvency, synthetic
+from . import curves, data, lee_carter as lc, life_table as lt, multipopulation as mp, simulation as sim, solvency, synthetic
 from .figstyle import band, end_label, header, label_offsets, new_figure, render
 
 # Settings shared with the notebooks.
 COUNTRY, AGES, FIRST_YEAR, PANDEMIC_YEARS = "IT", range(50, 100), 1975, (2020, 2021, 2022)
 UFR, LLP, SEED, N_SCENARIOS, PROJECTION_END = 0.033, 20, 20240101, 10_000, 2050
 CAPITAL_AGES = (55, 65, 75, 85)
+# Settings shared with the multi-population notebook.
+MP_AGES, MP_FIRST_YEAR, MP_INDICES = range(50, 90), 1998, ["IT", "EU peers", "DE", "FR", "ES", "NL"]
+MP_SHOWN = ["IT", "EU peers", "FR", "DE", "NL"]
+MP_AGE0, MP_HORIZON, MP_OMEGA, MP_SCENARIOS, MP_SEEDS = 65, 10, 110, 20_000, (20240101, 20240102)
 
 
 def load(official=True, n_scenarios=N_SCENARIOS) -> dict:
@@ -153,19 +157,74 @@ def longevity_capital(t, d):
     return fig
 
 
-FIGURES = {"mortality_rates": mortality_curves, "life_expectancy_65": life_expectancy, "longevity_capital": longevity_capital}
+def load_multipopulation(official=True) -> dict:
+    countries = ("IT",) + mp.PEERS
+    D, E = mp.load_panel(countries, "M", MP_AGES, MP_FIRST_YEAR, official=official)
+    D["EU peers"], E["EU peers"] = mp.aggregate(D, E, mp.PEERS)
+    fit = mp.fit_li_lee(D, E, countries, [y for y in D["IT"].columns if y not in PANDEMIC_YEARS])
+    sv = (data.load_ecb_svensson_parameters("2024-12-01", "2024-12-31") if official else synthetic.svensson_parameters())
+    v = curves.smith_wilson_from_svensson(curves.SvenssonCurve.from_series(sv.iloc[-1]), UFR, LLP).discount(
+        np.arange(0, MP_OMEGA - MP_AGE0 + 2.0))
+    table = {}
+    for label, dyn in (("Coherent: national deviations fade (Li-Lee)", mp.fit_dynamics(fit)),
+                       ("Permanent national deviations", mp.fit_dynamics(fit, random_walk_deviations=True))):
+        cal, test = (mp.simulate_states(dyn, MP_INDICES, MP_OMEGA - MP_AGE0 + 1, MP_SCENARIOS, seed=s) for s in MP_SEEDS)
+        Lc = mp.liability_values(fit, dyn, "IT", cal, MP_AGE0, MP_HORIZON, v)
+        Lt = mp.liability_values(fit, dyn, "IT", test, MP_AGE0, MP_HORIZON, v)
+        table[label] = {idx: 100 * mp.hedge_effectiveness(Lc, mp.index_death_rates(fit, idx, cal, [75], MP_HORIZON), Lt,
+                                                          mp.index_death_rates(fit, idx, test, [75], MP_HORIZON))["VaR reduction"]
+                        for idx in MP_INDICES}
+    names = {"IT": "Italy", "EU peers": "12 European peers", "FR": "France", "DE": "Germany", "NL": "Netherlands"}
+    frame = pd.DataFrame(table).loc[MP_SHOWN].rename(index=names)
+    source = ("Source: Eurostat demo_magec and demo_pjan (13 countries, men 50-89, 1998-2024); ECB AAA curve"
+              if official else "Simulated mortality, not official statistics")
+    return {"var_reduction": frame, "source": source}
+
+
+def index_hedge(t, d):
+    table = d["var_reduction"]
+    fig, ax = new_figure(t, height=4.8)
+    fig.subplots_adjust(left=0.2, right=0.95, bottom=0.14, top=0.72)
+    y = np.arange(len(table))[::-1]
+    h = 0.36
+    ax.grid(axis="y", visible=False)
+    ax.grid(axis="x", visible=True)
+    for k, col in enumerate(table.columns):
+        vals = table[col].to_numpy()
+        ax.barh(y + (0.5 - k) * (h + 0.04), vals, h, color=t["series"][k], label=col)
+        for yy, val in zip(y + (0.5 - k) * (h + 0.04), vals):
+            ax.annotate(f"{val:.0f}%", (val, yy), xytext=(4, 0), textcoords="offset points", va="center", fontsize=8,
+                        color=t["ink2"])
+    ax.set_yticks(y, [f"{i} index" for i in table.index])
+    ax.set_xlim(0, 100)
+    ax.set_xlabel("share of the 99.5% value at risk removed, %")
+    ax.legend(loc="lower center", ncol=2, bbox_to_anchor=(0.4, 1.0), fontsize=8.5)
+    header(fig, t, "Basis risk from a European index is small if countries stay coherent",
+           "Longevity risk of an annuity to Italian men aged 65: share of the 99.5% value at risk removed by a 10-year\n"
+           "q-forward at age 75 on each population index, large fund, Li-Lee model with two assumptions on national deviations",
+           d["source"])
+    fig.texts[-1].set_y(0.015)
+    return fig
+
+
+FIGURES = {"mortality_rates": (mortality_curves, "national"), "life_expectancy_65": (life_expectancy, "national"),
+           "longevity_capital": (longevity_capital, "national"), "index_hedge": (index_hedge, "multipopulation")}
+LOADERS = {"national": load, "multipopulation": load_multipopulation}
 
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description="Draw the README figures (light and dark variants).")
     parser.add_argument("--out", default=str(data.repository_root() / "docs" / "figures"))
     parser.add_argument("--synthetic", action="store_true", help="use simulated mortality and an illustrative curve (offline)")
+    parser.add_argument("--only", nargs="*", choices=list(FIGURES), help="draw only these figures")
     args = parser.parse_args(argv)
     import matplotlib
     matplotlib.use("Agg")
-    d = load(official=not args.synthetic)
-    for name, builder in FIGURES.items():
-        for path in render(builder, name, Path(args.out), d):
+    names = args.only or list(FIGURES)
+    inputs = {key: LOADERS[key](official=not args.synthetic) for key in {FIGURES[n][1] for n in names}}
+    for name in names:
+        builder, key = FIGURES[name]
+        for path in render(builder, name, Path(args.out), inputs[key]):
             print(path)
 
 
