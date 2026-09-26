@@ -80,14 +80,17 @@ def poisson_deviance_residuals(deaths: pd.DataFrame, exposures: pd.DataFrame, fi
     return pd.DataFrame(np.sign(D - Dhat) * np.sqrt(np.maximum(dev, 0.0)), index=deaths.index, columns=deaths.columns)
 
 
-def fit_poisson(deaths: pd.DataFrame, exposures: pd.DataFrame, fit_years=None, max_iter=2000, tol=1e-10) -> LeeCarterFit:
+def fit_poisson(deaths: pd.DataFrame, exposures: pd.DataFrame, fit_years=None, max_iter=2000, tol=1e-10,
+                offset=None) -> LeeCarterFit:
     """Poisson maximum-likelihood Lee-Carter fit (Brouhns, Denuit and Vermunt, 2002).
 
     Parameters are updated one block at a time with Newton steps (a_x, then
     k_t, then b_x) until no fitted log-rate a_x + b_x k_t changes by more
     than ``tol`` in an iteration. Years not in ``fit_years`` receive zero
     weight and their k_t is reported as NaN (for example to exclude pandemic
-    years).
+    years). An optional ``offset`` (ages x years, added to the log-rate) fits
+    ln m = offset + a_x + b_x k_t, as in the second stage of the Li-Lee model;
+    the returned parameters then describe the deviation from the offset.
     """
     if not (deaths.index.equals(exposures.index) and deaths.columns.equals(exposures.columns)):
         raise ValueError("deaths and exposures must have the same ages and years")
@@ -101,7 +104,8 @@ def fit_poisson(deaths: pd.DataFrame, exposures: pd.DataFrame, fit_years=None, m
         raise ValueError("deaths and exposures must be finite, with positive exposures, in the fitted years")
     w = np.broadcast_to(mask.astype(float), D.shape)
     D0 = np.where(mask, D, 0.0)
-    E0 = np.where(mask, E, 1.0)
+    off = np.zeros_like(D) if offset is None else np.asarray(offset, dtype=float).reshape(D.shape)
+    E0 = np.where(mask, E * np.exp(np.where(mask, off, 0.0)), 1.0)   # offset folded into the exposure
 
     # Starting values from the SVD fit of smoothed crude rates.
     start = fit_svd(pd.DataFrame(np.log((D0[:, mask] + 0.5) / E0[:, mask]), index=deaths.index, columns=years[mask]))
@@ -135,7 +139,7 @@ def fit_poisson(deaths: pd.DataFrame, exposures: pd.DataFrame, fit_years=None, m
     ax, bx, kt = _normalise(ax, bx, kt, mask)
     kt = np.where(mask, kt, np.nan)
     fit = LeeCarterFit(deaths.index.to_numpy(), years, ax, bx, kt, "poisson", loglik, np.nan, iterations)
-    residuals = poisson_deviance_residuals(deaths.loc[:, mask], exposures.loc[:, mask],
+    residuals = poisson_deviance_residuals(deaths.loc[:, mask], exposures.loc[:, mask] * np.exp(off[:, mask]),
                                            LeeCarterFit(fit.ages, years[mask], ax, bx, kt[mask], "poisson"))
     fit.deviance = float(np.sum(residuals.to_numpy() ** 2))
     return fit

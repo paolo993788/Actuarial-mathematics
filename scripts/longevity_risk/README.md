@@ -44,6 +44,7 @@ python -m longevity_risk.data --geo IT --sex M F --yield-curve 2024-12-01 2024-1
 | --- | --- |
 | [`notebooks/mortality_projection/lee_carter_mortality_projection.ipynb`](../../notebooks/mortality_projection/lee_carter_mortality_projection.ipynb) | Poisson and SVD Lee-Carter fits on Eurostat data for men and women, residual diagnostics, random walk with drift with and without the pandemic years, out-of-sample backtest, period versus cohort life expectancy. |
 | [`notebooks/longevity_risk/annuity_longevity_risk_solvency.ipynb`](../../notebooks/longevity_risk/annuity_longevity_risk_solvency.ipynb) | Smith-Wilson curve from the ECB curve, best estimates of life annuities, run-off and one-year value at risk, idiosyncratic risk and pooling, comparison with the Solvency II longevity shock and interest-rate sensitivity. |
+| [`notebooks/longevity_risk/multipopulation_longevity_hedging.ipynb`](../../notebooks/longevity_risk/multipopulation_longevity_hedging.ipynb) | Case study: Li-Lee model for Italy and 12 European countries, explanation ratios, mean-reverting national deviations, out-of-sample backtest against independent Lee-Carter models, coherent projections, and q-forward hedges of an Italian annuity on six indices by fund size and dynamics. |
 | [`notebooks/case_studies/pension_buy_in_pricing.ipynb`](../../notebooks/case_studies/pension_buy_in_pricing.ipynb) | Case study: buy-in quote for a pension fund (cash flows, best estimate, standard-formula SCR, risk margin, premium with hurdle rate, internal-model cross-check, sensitivities, board summary). An optional real membership file is read from `BUYIN_MEMBERSHIP_CSV` and must never be committed. |
 
 The country (default Italy, `COUNTRY = "IT"`), sex, age range and other parameters are set in the first code cell of each notebook. Official data are downloaded by default; set `LONGEVITY_RISK_DATA_MODE=synthetic` before starting Jupyter to run offline on simulated data.
@@ -64,7 +65,9 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 | --- | --- |
 | `outputs/lee_carter/*.png` | Crude rates, Lee-Carter parameters, residuals, backtest and projections. |
 | `outputs/longevity_scr/*.png`, `scr_comparison.csv` | Discount curve, run-off distribution and capital requirements by age. |
+| `outputs/multipopulation/*.png` | Life expectancy by country, Li-Lee parameters and national effects, projected gap between Italy and the European index. |
 | `outputs/buy_in_pricing/*.png`, `board_summary.txt` | Membership, cash flows, premium waterfall, sensitivities and the board summary of the case study. |
+| `docs/figures/*-light.png`, `*-dark.png` | README charts drawn by `python -m longevity_risk.readme_figures` (official data; `--synthetic` offline); the only generated files committed. |
 
 ## Method
 
@@ -82,11 +85,13 @@ Downloads are cached in `data/raw/eurostat/` and `data/raw/ecb/`, which Git igno
 
 **Portfolios** (`longevity_risk/portfolio.py`, `cpp/mortality.hpp`): members with sex, age and annual pension; expected cash flows under the central projection (optionally with shocked mortality or indexation); C++ simulation of the whole portfolio in which every member shares the scenario of the period index and, optionally, has an individually simulated lifetime; one-year trend risk of the portfolio. The two sexes use the same random scenarios (perfectly correlated trends, a prudent simplification).
 
+**Multi-population model and index hedging** (`longevity_risk/multipopulation.py`): Li-Lee augmented common factor model (Li and Lee, 2005), $\ln m_{x,t,i} = a_{x,i} + B_x K_t + b_{x,i} k_{t,i}$, fitted by Poisson maximum likelihood in two stages: a Lee-Carter model for the aggregate of the group, then for each population a Lee-Carter fit with $B_x K_t$ as an offset (the `offset` argument of `fit_poisson`). The explanation ratios are the Poisson-deviance analogue of Li and Lee's $R$ ratios. $K_t$ is a random walk with drift and each $k_{t,i}$ a zero-mean AR(1) estimated by least squares on consecutive fitted years, capped at 0.98 (or a driftless random walk for the non-coherent alternative); the innovations are jointly Gaussian with their sample covariance (simulated with a symmetric square root, which is robust when the covariance is near-singular). The hedged liability is an annuity-due split at the hedge horizon: payments on the simulated survivors up to the horizon plus the best-estimate annuity re-projected from the simulated state at the horizon, with binomial deaths for a finite fund. q-forwards pay the difference between a fixed rate and the realised index death probability at the horizon. Hedge ratios are least-squares coefficients on calibration scenarios, evaluated on independent test scenarios (variance, standard deviation and 99.5% VaR reduction; Coughlan et al., 2011; Li and Hardy, 2011).
+
 **Random numbers and parallelism**: xoshiro256** with SplitMix64 seeding and Box-Muller normals (portable across compilers); scenario $s$ uses its own random stream derived from `(seed, s)`, so results do not depend on the number of threads. The notebooks fix `SEED = 20240101` and report Monte Carlo standard errors.
 
 ## Verification
 
-Run `python -m pytest tests/longevity_risk` from the repository root (38 tests, a few seconds). Main checks:
+Run `python -m pytest tests/longevity_risk` from the repository root (48 tests, a few seconds). Main checks:
 
 | Check | Tolerance and justification |
 | --- | --- |
@@ -109,15 +114,25 @@ Run `python -m pytest tests/longevity_risk` from the repository root (38 tests, 
 | Idiosyncratic risk of a heterogeneous portfolio: mean and variance against the exact sum of individual variances | 4 standard errors; 5% |
 | Interest-rate shock table, interpolation, minimum up shock and negative rates; SCR of a single cash flow | exact values |
 | Risk margin with constant SCR and flat curve; BSCR aggregation; operational risk cap; best-estimate run-off | closed forms |
+| Poisson fit with a constant offset shifts $a_x$ by exactly the offset and leaves $b_x$, $k_t$ and the deviance unchanged | $10^{-8}$ ($10^{-6}$ for $k_t$) |
+| Li-Lee constraints ($\sum B = \sum b_i = 1$, $\sum K = \sum k_i = 0$, excluded years), deviance ordering and ratios in $[0, 1]$ | $10^{-8}$; exact inequalities |
+| AR(1) recovery on a simulated panel with $\phi = 0.8$; cap and random-walk option; number of consecutive pairs | between 0.5 and 1.05 (42 increments); exact |
+| Simulation without noise equals the central projection; split liability without noise equals the annuity on the central path | $10^{-12}$ |
+| Index death rates vs the formula; hedge effectiveness 1 for an exactly linear liability and about 0 for independent noise | $10^{-12}$; 1% |
+| Temporary life expectancy with constant force; sampling risk lowers hedge effectiveness | relative $10^{-9}$ to $10^{-12}$; ordering |
 
 ## References
 
 - Börger, M. (2010). Deterministic shock vs. stochastic value-at-risk: an analysis of the Solvency II standard model approach to longevity risk. *Blätter der DGVFM*, 31(2), 225-259.
 - Blackman, D. and Vigna, S. (2021). Scrambled linear pseudorandom number generators. *ACM Transactions on Mathematical Software*, 47(4). Public-domain reference code: https://prng.di.unimi.it/
 - Brouhns, N., Denuit, M. and Vermunt, J. K. (2002). A Poisson log-bilinear regression approach to the construction of projected lifetables. *Insurance: Mathematics and Economics*, 31(3), 373-393.
+- Coughlan, G. D., Khalaf-Allah, M., Ye, Y., Kumar, S., Cairns, A. J. G., Blake, D. and Dowd, K. (2011). Longevity hedging 101: a framework for longevity basis risk analysis and hedge effectiveness. *North American Actuarial Journal*, 15(2), 150-176.
 - Commission Delegated Regulation (EU) 2015/35 of 10 October 2014 supplementing Directive 2009/138/EC (Solvency II), Articles 39, 138, 140, 166, 167 and 204; Directive 2009/138/EC, Annex IV.
 - EIOPA. Technical documentation of the methodology to derive EIOPA's risk-free interest rate term structures. https://www.eiopa.europa.eu/tools-and-data/risk-free-interest-rate-term-structures_en
+- Enchev, V., Kleinow, T. and Cairns, A. J. G. (2017). Multi-population mortality models: fitting, forecasting and comparisons. *Scandinavian Actuarial Journal*, 2017(4), 319-342.
 - Lee, R. D. and Carter, L. R. (1992). Modeling and forecasting U.S. mortality. *Journal of the American Statistical Association*, 87(419), 659-671.
+- Li, J. S.-H. and Hardy, M. R. (2011). Measuring basis risk in longevity hedges. *North American Actuarial Journal*, 15(2), 177-200.
+- Li, N. and Lee, R. (2005). Coherent mortality forecasts for a group of populations: an extension of the Lee-Carter method. *Demography*, 42(3), 575-594.
 - Richards, S. J., Currie, I. D. and Ritchie, G. P. (2014). A value-at-risk framework for longevity trend risk. *British Actuarial Journal*, 19(1), 116-139.
 - Smith, A. and Wilson, T. (2001). Fitting yield curves with long term constraints. Research notes, Bacon and Woodrow.
 - Svensson, L. E. O. (1994). Estimating and interpreting forward interest rates: Sweden 1992-1994. NBER Working Paper 4871.
