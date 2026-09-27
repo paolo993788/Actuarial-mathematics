@@ -1,5 +1,6 @@
 # Actuarial Mathematics
 
+[![CI](https://github.com/paolo993788/Actuarial-mathematics/actions/workflows/ci.yml/badge.svg)](https://github.com/paolo993788/Actuarial-mathematics/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-00599C?logo=cplusplus&logoColor=white)
 ![R](https://img.shields.io/badge/R-4.2%2B-276DC3?logo=r&logoColor=white)
@@ -23,7 +24,7 @@ Results on official data: Eurostat deaths and population for Italy, 1992-2024 (a
 | Mortality projection | Poisson Lee-Carter by sex on Eurostat deaths and population, pandemic years excluded, deviance diagnostics, out-of-sample backtest of forecast intervals, period versus cohort life expectancy | Mortality at 65 improves by about 2.6% a year for men and 1.6% for women; life expectancy at 65 in 2024 is 19.8 years for men and 22.8 for women on a period basis, 21.4 and 24.4 on a cohort basis; including 2020-2022 would raise the estimated trend volatility by 76% for men; the 95% forecast intervals contain all ten out-of-sample years |
 | Longevity capital | Run-off and one-year value at risk (re-estimation of the trend, Richards et al. 2014) against the 20% Solvency II longevity shock, by age and interest-rate level; pooling of idiosyncratic risk | For a male annuitant aged 65 the standard-formula shock costs 5.5% of the best estimate, against 4.4% for the run-off 99.5% VaR and 1.7% for the one-year VaR: the standard formula is prudent from 65 upwards (13.4% against 2.4% at 85), but not at 55, where the run-off VaR (3.9%) exceeds the shock (3.5%) |
 | Discounting | ECB AAA yield curve extrapolated with the Smith-Wilson method and EIOPA convergence criterion | Convergence to the 3.30% ultimate forward rate within 1 basis point at 60 years |
-| Engineering | C++17 engine with portable, thread-independent random streams, NumPy reference implementations | 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 48 automated tests against closed forms, exact moments and NumPy references |
+| Engineering | C++17 engine with portable, thread-independent random streams, NumPy reference implementations | 100,000 portfolio scenarios with 1,500 simulated lifetimes each in about 3 seconds on four cores; 48 Python tests against closed forms, exact moments and NumPy references; 100 C++ checks built with warnings as errors and run under AddressSanitizer, UndefinedBehaviorSanitizer and ThreadSanitizer; CI on every pull request, including an offline run of every notebook; pinned lock file |
 
 ## Charts
 
@@ -86,6 +87,8 @@ python -m pip install -e scripts/longevity_risk
 python -m pytest tests/longevity_risk
 ```
 
+For the exact versions used by CI, install `scripts/longevity_risk/requirements-lock.txt` instead of `requirements.txt`. The standalone C++ tests and sanitizer builds are described in the [library README](scripts/longevity_risk/README.md#c-unit-tests-and-sanitizers).
+
 Open a notebook in Visual Studio Code (extensions *Python*, *Jupyter* and *C/C++*) and select the `.venv` environment as kernel. Official data are downloaded and cached on first use; set `LONGEVITY_RISK_DATA_MODE=synthetic` to work offline. The [project README](scripts/longevity_risk/README.md) documents methods, conventions and the validation table.
 
 The notebooks are stored with the outputs of a full run on official data (September 2026), so tables and charts can be read directly on GitHub. The R notebooks in [`notebooks/r_crosschecks/`](notebooks/r_crosschecks/README.md) recompute the main results with independent R packages; they need R 4.2 or later: run `Rscript notebooks/r_crosschecks/install_packages.R` once and select the **R** kernel.
@@ -116,7 +119,7 @@ Implemented: survival models and life tables, financial mathematics of annuities
 
 ## Development workflow
 
-Changes follow the [publishing workflow](docs/publishing.md). The [`CLAUDE.md`](CLAUDE.md) file provides project instructions for [Claude Code](https://claude.com/claude-code), so that AI-assisted contributions meet the same standards.
+Changes follow the [publishing workflow](docs/publishing.md). Every pull request runs the [CI workflow](.github/workflows/ci.yml): lint, the Python tests on Python 3.10-3.12, the C++ tests with GCC and Clang and under sanitizers, and every notebook offline on synthetic data. The [`CLAUDE.md`](CLAUDE.md) file provides project instructions for [Claude Code](https://claude.com/claude-code), so that AI-assisted contributions meet the same standards.
 
 ## Disclaimer
 

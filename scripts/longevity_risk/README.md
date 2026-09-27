@@ -10,6 +10,9 @@ Python package with a C++17 engine (pybind11) to project mortality with the Lee-
   - macOS: Xcode Command Line Tools (`xcode-select --install`);
   - Linux: GCC 9 or later, or Clang 10 or later.
 - Python dependencies: [`requirements.txt`](requirements.txt) (NumPy, SciPy, pandas, Matplotlib, pybind11, pytest, ipykernel).
+- Development tools: [`requirements-dev.txt`](requirements-dev.txt) (ruff, nbconvert).
+- Exact versions: [`requirements-lock.txt`](requirements-lock.txt) pins the two files above to versions that pass the test suite and execute every notebook (Python 3.11, Linux). CI installs it on Python 3.11 and the unpinned files on 3.10 and 3.12.
+- For the standalone C++ tests: CMake 3.16 or later (Ninja optional).
 
 ## Usage
 
@@ -22,7 +25,7 @@ python -m pip install -r scripts/longevity_risk/requirements.txt
 python -m pip install -e scripts/longevity_risk
 ```
 
-The last command compiles `cpp/bindings.cpp` into `longevity_risk._core`. Run it again after editing any C++ file.
+For the exact environment used by CI, install `requirements-lock.txt` instead of `requirements.txt`. The last command compiles `cpp/bindings.cpp` into `longevity_risk._core`. Run it again after editing any C++ file.
 
 ### Visual Studio Code
 
@@ -35,7 +38,12 @@ The last command compiles `cpp/bindings.cpp` into `longevity_risk._core`. Run it
 
 ```bash
 python -m pytest tests/longevity_risk                                  # validation suite
+ruff check --select F scripts tests                                    # lint (pyflakes rules)
 python -m longevity_risk.data --geo IT --sex M F --yield-curve 2024-12-01 2024-12-31   # optional pre-download
+
+# Standalone C++ tests (strict warnings; add -DLR_SANITIZE=address,undefined or =thread)
+cmake -S scripts/longevity_risk/cpp -B build/cpp -G Ninja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+cmake --build build/cpp && ctest --test-dir build/cpp --output-on-failure
 ```
 
 ### Notebooks
@@ -120,6 +128,48 @@ Run `python -m pytest tests/longevity_risk` from the repository root (48 tests, 
 | Simulation without noise equals the central projection; split liability without noise equals the annuity on the central path | $10^{-12}$ |
 | Index death rates vs the formula; hedge effectiveness 1 for an exactly linear liability and about 0 for independent noise | $10^{-12}$; 1% |
 | Temporary life expectancy with constant force; sampling risk lowers hedge effectiveness | relative $10^{-9}$ to $10^{-12}$; ordering |
+
+## C++ unit tests and sanitizers
+
+**Tests.** The engine is header-only, so [`cpp/CMakeLists.txt`](cpp/CMakeLists.txt) also compiles it without Python. It uses `-Wall -Wextra -Wpedantic -Wshadow -Wold-style-cast -Wnull-dereference -Wdouble-promotion -Werror` (`/W4 /WX` with MSVC) and bounds-checked standard containers outside Release builds. [`cpp/tests/test_core.cpp`](cpp/tests/test_core.cpp) runs 100 checks without any test framework. The Python suite compares the engine with a NumPy reference implementation; these tests add closed forms, exact identities, thread invariance and argument validation on the C++ code alone:
+
+| Check | Tolerance |
+| --- | --- |
+| SplitMix64 and xoshiro256** against the published reference outputs; uniform and normal moments | exact; 4 standard errors |
+| `parallel_for`: same result for 1, 3 and 8 threads; an exception in a task is rethrown | exact |
+| Lee-Carter death probability $q = 1 - e^{-m}$, closure at the highest age, horizon, validation of the parameters | $10^{-15}$; exact |
+| Constant force of mortality: annuity-due $(1 - (pv)^H)/(1 - pv)$ and curtate life expectancy $p(1 - p^{H-1})/(1 - p)$ in every scenario | $10^{-12}$ |
+| Deterministic projection vs a hand computation along $k_{T+h} = k_T + hd$; a faster fall in $k$ raises the annuity and the life expectancy | $10^{-12}$; ordering |
+| Stochastic projection: mean and variance of $k_{T+1}$ and $k_{T+H}$ ($h\sigma^2 + h^2\sigma_d^2$ with parameter uncertainty); 1 vs 5 threads | 4 standard errors; bitwise |
+| Individual lifetimes: average present value of 200,000 lives vs the exact mean and variance of $\sum_{t \le K} v(t)$ | 4 standard errors |
+| One-year recalibration: with a consistent drift and no noise the revalued annuity equals the best estimate; $d' = (k_{T+1} - k_{\text{first}})/(n+1)$; thread invariance | $10^{-12}$; bitwise |
+| Portfolios: grouping by age; a one-member portfolio reproduces the single-life simulation stream for stream; values add up across ages; one-year portfolio value equals the amount-weighted sum of the members' values | exact; $10^{-9}$ to $10^{-12}$ |
+
+**Mutation check.** Eight deliberate bugs were injected into the engine, and each makes the suite fail:
+
+- $q = m$ instead of $1 - e^{-m}$;
+- the cohort's age off by one year;
+- the complete instead of the curtate life expectancy;
+- the drift re-estimated with $n$ instead of $n + 1$ increments;
+- the parameter uncertainty of the drift halved;
+- the portfolio totals overwritten instead of summed;
+- the one-year view discounted one year too early;
+- individual lifetimes shortened by one year.
+
+**Sanitizers.** The same tests pass under two sanitizer builds:
+
+- AddressSanitizer with UndefinedBehaviorSanitizer (`-DLR_SANITIZE=address,undefined`): out-of-bounds access, use after free, signed overflow and similar;
+- ThreadSanitizer (`-DLR_SANITIZE=thread`): data races in the parallel scenario loops.
+
+CI runs both, plus GCC and Clang builds with warnings as errors.
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](../../.github/workflows/ci.yml) runs on every pull request and on pushes to `main`. It needs no credentials, downloads no data and never reads a real membership file. Its jobs:
+
+1. **Python:** lint (ruff, pyflakes rules) and the test suite, on Python 3.11 with the locked versions and on 3.10 and 3.12 with the newest allowed versions.
+2. **C++:** the standalone tests with GCC and Clang (warnings as errors), and with GCC under ASan/UBSan and under TSan.
+3. **Notebooks:** every Python notebook executed offline on synthetic data. The job checks that the data cache stays empty, i.e. that synthetic mode does not touch the network.
 
 ## References
 

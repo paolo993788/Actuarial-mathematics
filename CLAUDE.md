@@ -20,7 +20,7 @@ Repository of scripts and notebooks on the actuarial mathematics of life insuran
 - For new or modified calculations, verify at least one known result and the relevant edge cases, using justified numerical tolerances.
 - Fix and document the random seed of stochastic examples whenever reproducibility matters.
 - Run the relevant available checks and report the actual commands and outcomes. Never state that tests passed if they were not run.
-- The repository currently contains only its initial structure: there is no general test command or CI workflow yet.
+- CI (`.github/workflows/ci.yml`) runs lint (`ruff check --select F scripts tests`), `python -m pytest tests/longevity_risk`, the standalone C++ tests (with sanitizers) and every notebook offline on synthetic data; run the relevant checks locally before pushing, and each project documents its own additional checks.
 - Update the catalogue in the main README whenever you add a script or notebook.
 
 ## Publishing
