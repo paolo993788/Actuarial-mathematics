@@ -2,7 +2,6 @@
 limits and hedge-effectiveness bounds."""
 
 import numpy as np
-import pandas as pd
 import pytest
 
 from longevity_risk import lee_carter as lc
