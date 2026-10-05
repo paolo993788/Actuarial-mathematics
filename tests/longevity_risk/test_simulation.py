@@ -102,3 +102,41 @@ def test_one_year_recalibration_matches_numpy(model, discount):
     assert cpp["best_estimate"] == pytest.approx(ref["best_estimate"], rel=1e-13)
     for level in (0.005, 0.5, 0.995):
         assert np.quantile(cpp["value"], level) == pytest.approx(np.quantile(ref["value"], level), rel=1e-3)
+
+
+def test_ages_outside_the_table_are_rejected(model, discount):
+    # Below age_min the indices used to wrap around to the oldest ages and return finite nonsense (a best
+    # estimate of 1.2 at age 45 against 24 at age 50); now every entry point raises, like the C++ engine.
+    for age in (45, 49, 121):
+        with pytest.raises(ValueError):
+            model.horizon(age)
+        with pytest.raises(ValueError):
+            model.central_q(age)
+        with pytest.raises(ValueError):
+            model.best_estimate(age, discount)
+        with pytest.raises(ValueError):
+            sim.simulate_annuity(model, age, discount, n_scenarios=5)
+    assert model.horizon(model.age_min) == model.omega - model.age_min + 1 and model.horizon(model.omega) == 1
+
+
+def test_closing_age_must_exceed_the_fitted_ages():
+    D, E, _ = synthetic.deaths_and_exposures(seed=21)
+    fit = lc.fit_poisson(D, E)
+    for omega in (85, int(fit.ages.max())):
+        with pytest.raises(ValueError):
+            sim.extend_to_closing_age(fit, omega)
+    ages, ax, bx = sim.extend_to_closing_age(fit, int(fit.ages.max()) + 1)
+    assert ages.size == ax.size == bx.size == fit.ages.size + 1
+
+
+def test_quantile_standard_error_matches_the_asymptotic_formula():
+    from scipy import stats
+    x = np.random.default_rng(1).standard_normal(50_000)
+    asymptotic = np.sqrt(0.005 * 0.995 / x.size) / stats.norm.pdf(stats.norm.ppf(0.995))
+    # 500 bootstrap replicates estimate the standard error with a relative error of about 1/sqrt(2 x 500) = 3%;
+    # the discreteness of an extreme order statistic adds a few per cent (observed spread over seeds: 7%).
+    se = sim.quantile_standard_error(x, 0.995, n_boot=500, seed=3)
+    assert se == pytest.approx(asymptotic, rel=0.15)
+    assert sim.quantile_standard_error(x, 0.995, n_boot=50, seed=4) == sim.quantile_standard_error(x, 0.995, n_boot=50, seed=4)
+    with pytest.raises(ValueError):
+        sim.quantile_standard_error(np.array([1.0, np.nan, 2.0]), 0.5)

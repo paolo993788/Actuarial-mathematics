@@ -31,7 +31,7 @@ def extend_to_closing_age(fit: LeeCarterFit, omega=120, slope_ages=15, b_ages=10
     """
     ages = fit.ages.astype(int)
     if omega <= ages.max():
-        return ages, fit.ax.copy(), fit.bx.copy()
+        raise ValueError(f"omega ({omega}) must exceed the highest fitted age ({ages.max()})")
     slope, intercept = np.polyfit(ages[-slope_ages:], fit.ax[-slope_ages:], 1)
     extra = np.arange(ages.max() + 1, omega + 1)
     ax = np.concatenate([fit.ax, intercept + slope * extra])
@@ -63,6 +63,9 @@ class ProjectionModel:
         return self.rw.last_year
 
     def horizon(self, age0: int) -> int:
+        """Number of projection years for a life aged `age0` (an age inside [age_min, omega])."""
+        if not self.age_min <= age0 <= self.omega:
+            raise ValueError(f"age {age0} outside the age range of the table ({self.age_min}-{self.omega})")
         return self.omega - age0 + 1
 
     def cohort_q(self, age0: int, k_path) -> np.ndarray:
@@ -102,6 +105,20 @@ def one_year_recalibration(model: ProjectionModel, age0: int, discount, n_scenar
     core = require_cpp()
     return core.one_year_recalibration(*model._args(parameter_uncertainty), model.rw.k_first, model.rw.n_increments,
                                        age0, np.asarray(discount, dtype=float), n_scenarios, seed, n_threads)
+
+
+def quantile_standard_error(sample, level, n_boot=500, seed=20240101) -> float:
+    """Monte Carlo standard error of an empirical quantile, by the bootstrap of the (independent) scenarios.
+
+    Used to report the sampling error of simulated value-at-risk figures; for a large sample it agrees with
+    the asymptotic formula sqrt(p (1 - p) / n) / f(q).
+    """
+    x = np.asarray(sample, dtype=float)
+    if x.ndim != 1 or x.size < 2 or not np.isfinite(x).all():
+        raise ValueError("sample must be a one-dimensional array of at least two finite values")
+    rng = np.random.default_rng(seed)
+    boot = np.array([np.quantile(x[rng.integers(0, x.size, x.size)], level) for _ in range(n_boot)])
+    return float(boot.std(ddof=1))
 
 
 # --------------------------------------------------------------------------- NumPy references

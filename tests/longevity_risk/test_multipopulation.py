@@ -60,9 +60,19 @@ def test_log_rates_reproduce_the_crude_rates_closely(panel, fitted):
 def test_dynamics_recover_mean_reversion_and_cap_phi(fitted):
     fit, dyn = fitted
     phis = np.array([dyn.phi_unrestricted[c] for c in COUNTRIES])
-    assert np.all((phis > 0.5) & (phis < 1.05))                # simulated with phi = 0.8, 42 increments
+    assert np.all((phis > 0.5) & (phis < 1.05))                # simulated with phi = 0.8, 41 increments
     assert all(dyn.phi[c] <= 0.98 for c in dyn.phi)
-    assert dyn.n_obs == len(fit.years) - 1 - 3                 # pairs 2019-20, 2020-21 and 2021-22 are dropped
+    assert dyn.n_obs == len(fit.years) - 1 - 3 == 41           # pairs 2019-20, 2020-21 and 2021-22 are dropped
+    # The cap binds when it is below the unrestricted estimates (all between 0.7 and 0.91 on this panel): the
+    # coefficient equals the cap and the innovations are the residuals at the capped coefficient.
+    capped = mp.fit_dynamics(fit, phi_max=0.5)
+    years = fit.years.astype(int)
+    pairs = [t for t in range(1, years.size) if fit.mask[t] and fit.mask[t - 1] and years[t] - years[t - 1] == 1]
+    for c in COUNTRIES:
+        assert capped.phi_unrestricted[c] > 0.5 and capped.phi[c] == 0.5
+        k = fit.k[c]
+        resid = np.array([k[t] - 0.5 * k[t - 1] for t in pairs])
+        assert capped.cov.loc[c, c] == pytest.approx(resid @ resid / (len(pairs) - 1), rel=1e-12)
     rw = mp.fit_dynamics(fit, random_walk_deviations=True)
     assert all(v == 1.0 for v in rw.phi.values())
     np.testing.assert_allclose(np.diag(dyn.corr.to_numpy()), 1.0)
@@ -122,3 +132,34 @@ def test_sampling_risk_lowers_hedge_effectiveness(fitted):
     small = mp.hedge_effectiveness(mp.liability_values(fit, dyn, "AA", cal, 65, 10, v, n_lives=500, seed=1), X[0],
                                    mp.liability_values(fit, dyn, "AA", test, 65, 10, v, n_lives=500, seed=2), X[1])
     assert large["variance reduction"] > 0.9 > small["variance reduction"]
+
+
+def test_simulated_innovations_reproduce_the_covariance(fitted):
+    fit, dyn = fitted
+    keys = ["K", *COUNTRIES]
+    cov = dyn.cov.loc[keys, keys].to_numpy()
+    values, vectors = np.linalg.eigh(cov)
+    root = vectors * np.sqrt(np.clip(values, 0.0, None))       # the factor V Lambda^(1/2) used by simulate_states
+    np.testing.assert_allclose(root @ root.T, cov, atol=1e-12 * np.abs(cov).max())
+    quiet = mp.LiLeeDynamics(0.0, 0.0, {c: 0.0 for c in COUNTRIES}, dyn.cov, 0.0, {c: 0.0 for c in COUNTRIES},
+                             dyn.last_year, dyn.n_obs)
+    states = mp.simulate_states(quiet, COUNTRIES, 1, 200_000, seed=9)
+    sample = np.column_stack([np.diff(np.c_[np.zeros(200_000), states["K"]], axis=1)[:, 0]] + [states[c][:, 0] for c in COUNTRIES])
+    np.testing.assert_allclose(np.cov(sample.T), cov, atol=0.02 * np.abs(cov).max())   # sampling error of 200,000 draws
+
+
+def test_extended_parameters_and_age_checks(fitted):
+    fit, dyn = fitted
+    for omega in (90, 95, 110):
+        ages, a, B, b = mp.extended_parameters(fit, "AA", omega)
+        assert ages.size == a.size == B.size == b.size == omega - 50 + 1
+    for omega in (85, 89):   # the arrays used to come back with different lengths
+        with pytest.raises(ValueError):
+            mp.extended_parameters(fit, "AA", omega)
+    states = mp.simulate_states(dyn, ["AA"], 60, 3, seed=2)
+    v = 1.03 ** -np.arange(0, 80.0)
+    for age0 in (45, 49, 101):
+        with pytest.raises(ValueError):
+            mp.liability_values(fit, dyn, "AA", states, age0, 10, v)
+    with pytest.raises(ValueError):
+        mp.index_death_rates(fit, "AA", states, [70, 95], 10)   # 95 is not a fitted age

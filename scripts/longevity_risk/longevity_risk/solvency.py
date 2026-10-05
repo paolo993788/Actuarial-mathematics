@@ -86,15 +86,22 @@ def interest_rate_scr(cash_flows, times, zero_rates_annual):
 MARKET_LIFE_CORRELATION = 0.25   # Directive 2009/138/EC, Annex IV
 OPERATIONAL_LIFE_FACTOR = 0.0045  # Delegated Regulation (EU) 2015/35, Article 204 (life obligations)
 COST_OF_CAPITAL = 0.06            # Delegated Regulation (EU) 2015/35, Article 39
+# Solvency II review: Commission Delegated Regulation (EU) 2026/269 of 29 October 2025 (C(2025) 7206), Article 1(8)
+# and (9), applicable from 30 January 2027, following Directive (EU) 2025/2: RM = CoC sum_t max(0.96^t; 50%) SCR(t)
+# / (1 + r(t+1))^(t+1) (amended Article 37(1)) with a cost-of-capital rate of 4.75% (amended Article 39).
+REVIEW_COST_OF_CAPITAL = 0.0475
+REVIEW_LAMBDA = 0.96
+REVIEW_FLOOR = 0.50
 
 
 def basic_scr(market, life, correlation=MARKET_LIFE_CORRELATION):
     return float(np.sqrt(market**2 + life**2 + 2.0 * correlation * market * life))
 
 
-def operational_scr(bscr, technical_provisions, factor=OPERATIONAL_LIFE_FACTOR):
-    """Operational risk for life business without unit-linked: min(30% BSCR, 0.45% of technical provisions)."""
-    return float(min(0.3 * bscr, factor * technical_provisions))
+def operational_scr(bscr, best_estimate, factor=OPERATIONAL_LIFE_FACTOR):
+    """Operational risk for life business without unit-linked: min(30% BSCR, 0.45% of the technical provisions
+    without the risk margin, i.e. the best estimate, gross of reinsurance; Article 204(4))."""
+    return float(min(0.3 * bscr, factor * best_estimate))
 
 
 def best_estimate_runoff(cash_flows, discount):
@@ -105,14 +112,35 @@ def best_estimate_runoff(cash_flows, discount):
     return pv / v
 
 
-def risk_margin(scr_0, be_runoff, discount, coc=COST_OF_CAPITAL):
+def risk_margin(scr_0, be_runoff, discount, coc=COST_OF_CAPITAL, lambda_=1.0, floor=0.0):
     """Cost-of-capital risk margin with SCR(t) projected in proportion to BE(t)/BE(0).
 
-    RM = CoC * sum_{t >= 0} SCR(t) v(t + 1), a simplification allowed by the EIOPA
-    guidelines on the valuation of technical provisions (projection by a proxy).
+    RM = CoC * sum_{t >= 0} max(lambda^t, floor) SCR(t) v(t + 1): with lambda = 1 the formula of Article 37
+    of the Delegated Regulation in force until 29 January 2027 (the SCR projection by a proxy is a
+    simplification allowed by the EIOPA guidelines on the valuation of technical provisions); with
+    `coc=REVIEW_COST_OF_CAPITAL`, `lambda_=REVIEW_LAMBDA` and `floor=REVIEW_FLOOR` the amended formula that
+    applies from 30 January 2027.
+
+    `discount` must hold at least len(be_runoff) + 1 factors (v(0) .. v(N)); a shorter vector would drop
+    terms of the sum silently, so it is rejected.
     """
     be = np.asarray(be_runoff, dtype=float)
+    return risk_margin_from_path(scr_0 * be / be[0], discount, coc, lambda_, floor)
+
+
+def risk_margin_from_path(scr_path, discount, coc=COST_OF_CAPITAL, lambda_=1.0, floor=0.0):
+    """Cost-of-capital risk margin for an explicit projection SCR(t), t = 0..N-1:
+    RM = CoC * sum_t max(lambda^t, floor) SCR(t) v(t + 1).
+
+    `discount` must hold at least N + 1 factors (v(0) .. v(N)); a shorter vector would drop terms of the sum
+    silently, so it is rejected. `risk_margin` is this formula with SCR(t) proportional to the best estimate.
+    """
+    scr = np.asarray(scr_path, dtype=float)
     v = np.asarray(discount, dtype=float)
-    scr_path = scr_0 * be / be[0]
-    n = min(be.size, v.size - 1)
-    return float(coc * np.sum(scr_path[:n] * v[1:n + 1]))
+    if v.size < scr.size + 1:
+        raise ValueError("discount factors must cover the run-off plus one year")
+    if not (0.0 < lambda_ <= 1.0 and 0.0 <= floor <= 1.0):
+        raise ValueError("lambda_ must lie in (0, 1] and floor in [0, 1]")
+    n = scr.size
+    factor = np.maximum(lambda_ ** np.arange(n), floor)
+    return float(coc * np.sum(factor * scr * v[1:n + 1]))

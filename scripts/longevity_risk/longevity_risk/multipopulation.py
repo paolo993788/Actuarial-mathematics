@@ -210,6 +210,8 @@ def extended_parameters(fit: LiLeeFit, name, omega=110, slope_ages=15, b_ages=10
     """a_{x,i} extrapolated linearly in age (Gompertz) and B_x, b_{x,i} held at the average of the oldest
     fitted ages, up to `omega` (same rule as ``simulation.extend_to_closing_age``)."""
     ages = fit.ages.astype(int)
+    if omega <= ages.max():
+        raise ValueError(f"omega ({omega}) must exceed the highest fitted age ({ages.max()})")
     extra = np.arange(ages.max() + 1, omega + 1)
     slope, intercept = np.polyfit(ages[-slope_ages:], fit.a[name][-slope_ages:], 1)
     a = np.concatenate([fit.a[name], intercept + slope * extra])
@@ -290,6 +292,8 @@ def liability_values(fit: LiLeeFit, dyn: LiLeeDynamics, name, states: dict, age0
     infinitely large. `discount[t]` is the discount factor for time t.
     """
     ages, a, B, b = extended_parameters(fit, name, omega)
+    if not ages[0] <= age0 <= omega - horizon:
+        raise ValueError(f"age0 ({age0}) must lie in [{ages[0]}, omega - horizon = {omega - horizon}]")
     v = np.asarray(discount, dtype=float)
     K, k = states["K"][:, :horizon], states[name][:, :horizon]
     n = K.shape[0]
@@ -321,7 +325,10 @@ def liability_values(fit: LiLeeFit, dyn: LiLeeDynamics, name, states: dict, age0
 def index_death_rates(fit: LiLeeFit, name, states: dict, ages, year_index: int) -> np.ndarray:
     """Realised one-year death probabilities of an index population at `ages` in projection year `year_index`
     (1-based), shape (n_scenarios, len(ages))."""
-    i = np.searchsorted(fit.ages, np.asarray(ages))
+    ages = np.asarray(ages)
+    if not np.isin(ages, fit.ages).all():
+        raise ValueError(f"ages must be fitted ages ({fit.ages.min()}-{fit.ages.max()})")
+    i = np.searchsorted(fit.ages, ages)
     K, k = states["K"][:, year_index - 1], states[name][:, year_index - 1]
     return q_from_m(np.exp(fit.a[name][i] + fit.B[i] * K[:, None] + fit.b[name][i] * k[:, None]))
 

@@ -77,3 +77,32 @@ def test_random_walk_with_gap_uses_endpoints():
     rw = lc.RandomWalkDrift.from_kt(years, k_gap)
     assert rw.drift == pytest.approx((k[-1] - k[0]) / 10)
     assert rw.n_increments == 10
+    # Gap-weighted variance: an increment over g years is N(g d, g sigma^2), the divisor is the number of
+    # observed increments minus one (8 here), and the drift's standard error uses the 10 calendar years.
+    kept = k_gap[~np.isnan(k_gap)]
+    gaps = np.diff(years[~np.isnan(k_gap)])
+    inc = np.diff(kept)
+    assert rw.sigma == pytest.approx(np.sqrt(np.sum((inc - gaps * rw.drift) ** 2 / gaps) / (inc.size - 1)), rel=1e-12)
+    assert rw.drift_se == pytest.approx(rw.sigma / np.sqrt(10), rel=1e-12)
+    assert rw.sigma == pytest.approx(0.372890894, abs=1e-9) and rw.drift_se == pytest.approx(0.117918454, abs=1e-9)
+
+
+def test_random_walk_needs_three_fitted_years():
+    with pytest.raises(ValueError):   # sigma used to come out NaN with two years
+        lc.RandomWalkDrift.from_kt([2000, 2001, 2002], [0.0, np.nan, -2.0])
+    rw = lc.RandomWalkDrift.from_kt([2000, 2001, 2002], [0.0, -0.9, -2.0])
+    assert rw.drift == pytest.approx(-1.0) and np.isfinite(rw.sigma) and rw.sigma > 0
+
+
+def test_excluded_years_carry_no_weight():
+    # The zero-weight fit equals the fit on the remaining columns, so an excluded year cannot leak into a_x,
+    # b_x, the period index or the deviance.
+    D, E, _ = synthetic.deaths_and_exposures(seed=13)
+    keep = [y for y in D.columns if y not in (2020, 2021)]
+    weighted = lc.fit_poisson(D, E, fit_years=keep)
+    dropped = lc.fit_poisson(D[keep], E[keep])
+    np.testing.assert_allclose(weighted.ax, dropped.ax, atol=1e-12)
+    np.testing.assert_allclose(weighted.bx, dropped.bx, atol=1e-12)
+    np.testing.assert_allclose(weighted.kt[~np.isnan(weighted.kt)], dropped.kt, atol=1e-12)
+    assert weighted.deviance == pytest.approx(dropped.deviance, rel=1e-12)
+    assert weighted.iterations == dropped.iterations

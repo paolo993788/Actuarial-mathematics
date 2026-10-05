@@ -3,8 +3,10 @@
 Members are described by sex, exact age at valuation and annual pension
 (paid yearly in advance while alive, optionally indexed at a constant rate).
 Each sex has its own ProjectionModel. For stochastic results the two sexes
-use the same random scenarios, i.e. their mortality trends are treated as
-perfectly correlated, a prudent simplification.
+use the same random scenarios of the period index, i.e. their mortality
+trends are treated as perfectly correlated, a prudent simplification; the
+simulated lifetimes of the members are independent across sexes (each sex
+draws them from its own random stream).
 """
 
 from __future__ import annotations
@@ -42,16 +44,52 @@ def expected_cash_flows(models: dict, members: pd.DataFrame, horizon: int, index
     return out
 
 
+def longevity_scr_runoff(models: dict, members: pd.DataFrame, discount, horizon: int, indexation=0.0, shock=0.20):
+    """Explicit projection of the standard-formula longevity SCR, SCR(t) for t = 0..horizon-1.
+
+    SCR(t) is the increase of the best estimate at time t when every death probability from t onwards is
+    reduced by `shock` (Article 138; the closing age is not shocked), for the business expected to be in force
+    at t under the central projection: sum over members of pension x S(t) x [a'(t) - a(t)], where a(t) and a'(t)
+    are the annuities-due at t, valued at v(u) / v(t), without and with the shock. SCR(0) equals the difference
+    of the shocked and unshocked best estimates of `expected_cash_flows`. Used to check the proxy SCR(t) =
+    SCR(0) BE(t) / BE(0) of the risk margin, which understates SCR(t) when the shock bites harder on older lives.
+    """
+    v = np.asarray(discount, dtype=float)
+    if v.size < horizon:
+        raise ValueError("discount factors must cover the horizon")
+    growth = (1.0 + indexation) ** np.arange(horizon)
+    scr = np.zeros(horizon)
+    for (sex, age), group in members.groupby(["sex", "age"]):
+        model = models[sex]
+        q = model.central_q(int(age))
+        H = min(q.size, horizon)
+        shocked = np.where(q >= 1.0, 1.0, q * (1.0 - shock))
+        S = np.concatenate([[1.0], np.cumprod(1.0 - q)])          # S(u), u = 0..q.size
+        amount = group["pension"].sum()
+        for t in range(H):
+            u = np.arange(t, H)
+            base = S[u] / S[t]                                     # survival from t to u, central projection
+            stressed = np.concatenate([[1.0], np.cumprod(1.0 - shocked[t:H - 1])])
+            scr[t] += amount * S[t] * np.sum((stressed - base) * growth[u] * v[u]) / v[t]
+    return scr
+
+
 def simulate(models: dict, members: pd.DataFrame, discount, n_scenarios=20_000, idiosyncratic=True, seed=12345,
              indexation=0.0, parameter_uncertainty=True, n_threads=0) -> pd.DataFrame:
-    """Present value of the whole portfolio in each scenario (C++ engine), by sex and in total."""
+    """Present value of the whole portfolio in each scenario (C++ engine), by sex and in total.
+
+    The sexes share the trend scenarios (same seed and scenario index); the lifetimes of the second and
+    following sexes come from separate random streams, so that members of different sexes do not receive
+    the same uniforms (which would make their lifetimes comonotone and overstate the idiosyncratic risk).
+    """
     core = require_cpp()
     v = indexed_discount(discount, indexation)
     result = {}
-    for sex, group in members.groupby("sex"):
+    for stream, (sex, group) in enumerate(members.groupby("sex")):
         m: ProjectionModel = models[sex]
         out = core.simulate_portfolio(*m._args(parameter_uncertainty), group["age"].to_numpy(np.int32),
-                                      group["pension"].to_numpy(float), v, n_scenarios, idiosyncratic, seed, n_threads)
+                                      group["pension"].to_numpy(float), v, n_scenarios, idiosyncratic, seed, n_threads,
+                                      lifetime_stream=stream)
         result[f"{sex} systematic"] = out["pv_systematic"]
         if idiosyncratic:
             result[f"{sex} realised"] = out["pv_realised"]

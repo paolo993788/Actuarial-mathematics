@@ -84,7 +84,8 @@ jobs:
       - name: Build
         run: cmake --build build/cpp
       - name: Unit tests
-        run: ctest --test-dir build/cpp --output-on-failure
+        # --no-tests=error: a build that registers no test must fail rather than pass vacuously.
+        run: ctest --test-dir build/cpp --output-on-failure --no-tests=error
 
   notebooks:
     name: Notebooks (synthetic data, offline)
@@ -108,7 +109,10 @@ jobs:
           MPLBACKEND: Agg
         run: |
           set -euo pipefail
-          for nb in $(git ls-files 'notebooks/*.ipynb' | grep -v '^notebooks/r_crosschecks/'); do
+          notebooks=$(git ls-files 'notebooks/*.ipynb' | grep -v '^notebooks/r_crosschecks/')
+          # The four Python notebooks must all be found: an empty list would make this step pass vacuously.
+          test "$(echo "$notebooks" | wc -l)" -eq 4
+          for nb in $notebooks; do
             echo "::group::$nb"
             jupyter nbconvert --to notebook --execute --output-dir "$RUNNER_TEMP/executed" \
               --ExecutePreprocessor.timeout=1200 "$nb"
@@ -116,3 +120,14 @@ jobs:
           done
           # Synthetic mode must not touch the network: the data cache stays empty.
           test "$(find "$RUNNER_TEMP/no-data" -type f 2>/dev/null | wc -l)" -eq 0
+      - name: Execute the buy-in notebook with a membership file (CSV branch)
+        env:
+          LONGEVITY_RISK_DATA_MODE: synthetic
+          LONGEVITY_RISK_DATA_DIR: ${{ runner.temp }}/no-data
+          BUYIN_MEMBERSHIP_CSV: ${{ runner.temp }}/membership.csv
+          MPLBACKEND: Agg
+        run: |
+          set -euo pipefail
+          python -c "from longevity_risk import synthetic; synthetic.pensioners(n=300, seed=1).to_csv('$BUYIN_MEMBERSHIP_CSV', index=False)"
+          jupyter nbconvert --to notebook --execute --output-dir "$RUNNER_TEMP/executed-csv" \
+            --ExecutePreprocessor.timeout=1200 notebooks/case_studies/pension_buy_in_pricing.ipynb

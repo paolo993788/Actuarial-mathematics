@@ -172,6 +172,8 @@ class RandomWalkDrift:
         kt = np.asarray(kt, dtype=float)
         ok = ~np.isnan(kt)
         y, k = years[ok].astype(int), kt[ok]
+        if k.size < 3:
+            raise ValueError("at least three fitted years are needed to estimate sigma")
         gaps = np.diff(y)
         increments = np.diff(k)
         total = y[-1] - y[0]

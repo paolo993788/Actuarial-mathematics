@@ -123,14 +123,14 @@ PYBIND11_MODULE(_core, m) {
         "simulate_portfolio",
         [](int age_min, const DoubleArray& ax, const DoubleArray& bx, double k_last, double drift, double sigma,
            double drift_se, const IntArray& ages, const DoubleArray& amounts, const DoubleArray& discount,
-           long long n_scenarios, bool idiosyncratic, std::uint64_t seed, int n_threads) {
+           long long n_scenarios, bool idiosyncratic, std::uint64_t seed, int n_threads, std::uint64_t lifetime_stream) {
             const lr::LeeCarter lc = make_model(age_min, ax, bx, k_last, drift, sigma, drift_se);
             const auto a = to_int_vector(ages);
             const auto w = to_vector(amounts), v = to_vector(discount);
             lr::PortfolioSimulation res;
             {
                 py::gil_scoped_release release;
-                res = lr::simulate_portfolio(lc, a, w, v, n_scenarios, idiosyncratic, seed, n_threads);
+                res = lr::simulate_portfolio(lc, a, w, v, n_scenarios, idiosyncratic, seed, n_threads, lifetime_stream);
             }
             py::dict d;
             d["pv_systematic"] = to_array(res.pv_systematic);
@@ -139,8 +139,9 @@ PYBIND11_MODULE(_core, m) {
         },
         py::arg("age_min"), py::arg("ax"), py::arg("bx"), py::arg("k_last"), py::arg("drift"), py::arg("sigma"),
         py::arg("drift_se"), py::arg("ages"), py::arg("amounts"), py::arg("discount"), py::arg("n_scenarios"),
-        py::arg("idiosyncratic") = false, py::arg("seed") = 12345, py::arg("n_threads") = 0,
-        "Monte Carlo present value of a portfolio of annuities with different ages and amounts.");
+        py::arg("idiosyncratic") = false, py::arg("seed") = 12345, py::arg("n_threads") = 0, py::arg("lifetime_stream") = 0,
+        "Monte Carlo present value of a portfolio of annuities with different ages and amounts (lifetime_stream > 0: "
+        "lifetimes from a separate random stream, for groups that share the trend scenarios).");
 
     m.def(
         "portfolio_one_year",

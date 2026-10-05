@@ -367,6 +367,31 @@ void test_portfolios() {
     const lr::PortfolioSimulation mixed_threads = lr::simulate_portfolio(lc, {65, 80, 65}, {1.0, 2.0, 3.0}, discount, 500, true, 4, 1);
     const lr::PortfolioSimulation mixed_threads5 = lr::simulate_portfolio(lc, {65, 80, 65}, {1.0, 2.0, 3.0}, discount, 500, true, 4, 5);
     CHECK(mixed_threads.pv_realised == mixed_threads5.pv_realised);
+    // Lifetime streams: stream 0 is the scenario's own stream (above); a positive stream keeps the trend scenario
+    // (same systematic values) but draws other lifetimes, which are independent of the scenario's own draws:
+    // over 20,000 scenarios of one life without trend risk the two sets of realised values correlate below 0.03.
+    lr::LeeCarter fixed = lc;
+    fixed.sigma = 0.0;
+    fixed.drift_se = 0.0;
+    const lr::PortfolioSimulation own = lr::simulate_portfolio(fixed, {70}, {1.0}, discount, 20000, true, 9, 2, 0);
+    const lr::PortfolioSimulation other = lr::simulate_portfolio(fixed, {70}, {1.0}, discount, 20000, true, 9, 2, 1);
+    CHECK(own.pv_systematic == other.pv_systematic);
+    CHECK(own.pv_realised != other.pv_realised);
+    const double mo = mean_of(own.pv_realised), mt = mean_of(other.pv_realised);
+    double cov = 0.0, vo = 0.0, vt = 0.0;
+    for (std::size_t s = 0; s < own.pv_realised.size(); ++s) {
+        cov += (own.pv_realised[s] - mo) * (other.pv_realised[s] - mt);
+        vo += (own.pv_realised[s] - mo) * (own.pv_realised[s] - mo);
+        vt += (other.pv_realised[s] - mt) * (other.pv_realised[s] - mt);
+    }
+    CHECK(std::abs(cov / std::sqrt(vo * vt)) < 0.03);
+    CHECK_CLOSE(mt, own.pv_systematic[0], 4.0 * std::sqrt(vt / 20000.0) / std::sqrt(20000.0));
+    const lr::PortfolioSimulation other_threads = lr::simulate_portfolio(fixed, {70}, {1.0}, discount, 20000, true, 9, 5, 1);
+    CHECK(other.pv_realised == other_threads.pv_realised);
+    // Argument validation, as for the single-life engine.
+    CHECK(throws_invalid_argument([&] { lr::simulate_portfolio(lc, {65}, {1.0}, discount, 0, true, 4, 1); }));
+    CHECK(throws_invalid_argument([&] { lr::simulate_portfolio(lc, {65}, {1.0}, discount, -1, true, 4, 1); }));
+    CHECK(throws_invalid_argument([&] { lr::simulate_portfolio(lc, {65}, {1.0}, flat_discount(0.02, 10), 5, true, 4, 1); }));
 
     // One-year view of a portfolio: amount-weighted sum of the members' one-year values, scenario by scenario.
     const double k_first = lc.k_last - 30 * lc.drift;
@@ -379,6 +404,8 @@ void test_portfolios() {
         weighted = weighted && std::abs(p1.value[s] - (4.0 * r65.value[s] + 2.0 * r80.value[s])) < 1e-12;
     CHECK(weighted);
     CHECK(p1.k_next == r65.k_next);
+    CHECK(throws_invalid_argument([&] { lr::portfolio_one_year(lc, k_first, 30, {65}, {1.0}, discount, 0, 6, 1); }));
+    CHECK(throws_invalid_argument([&] { lr::portfolio_one_year(lc, k_first, 30, {65}, {1.0}, discount, -1, 6, 1); }));
 }
 
 }  // namespace
