@@ -151,7 +151,7 @@ def longevity_capital(t, d):
     ax.axhline(0, color=t["axis"], lw=1)
     ax.legend(loc="upper left", ncol=3)
     ax.set_ylim(0, cap.to_numpy().max() * 1.25)
-    header(fig, t, "The Solvency II longevity shock is prudent for older annuitants",
+    header(fig, t, "Longevity capital by age and valuation method",
            f"Longevity capital for a male life annuity, % of the best estimate, valuation at 31 December {d['valuation_year']}",
            d["source"] + "; ECB AAA curve with Smith-Wilson extrapolation; 100,000 scenarios")
     return fig
@@ -199,7 +199,7 @@ def index_hedge(t, d):
     ax.set_xlim(0, 100)
     ax.set_xlabel("share of the 99.5% value at risk removed, %")
     ax.legend(loc="lower center", ncol=2, bbox_to_anchor=(0.4, 1.0), fontsize=8.5)
-    header(fig, t, "Basis risk from a European index is small if countries stay coherent",
+    header(fig, t, "Longevity hedge effectiveness under alternative mortality models",
            "Longevity risk of an annuity to Italian men aged 65: share of the 99.5% value at risk removed by a 10-year\n"
            "q-forward at age 75 on each population index, large fund, Li-Lee model with two assumptions on national deviations",
            d["source"])
