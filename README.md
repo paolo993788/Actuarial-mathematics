@@ -65,15 +65,27 @@ Each notebook states its assumptions and conventions, fixes its random seeds, re
 
 ## Architecture
 
-```text
-notebooks/  ──►  longevity_risk (Python)                    ──►  longevity_risk._core (C++17, pybind11)
-                 Eurostat and ECB loaders                        Lee-Carter scenario generator (drift uncertainty)
-                 Poisson / SVD Lee-Carter, random walk           cohort survival and life annuities
-                 Li-Lee multi-population model, index hedging
-                 Smith-Wilson curve                              portfolios with individual lifetimes
-                 Solvency II: shocks, SCR, risk margin           one-year recalibration (trend risk)
-                 NumPy reference implementations
+Research notebooks call the Python package. Computationally intensive methods are implemented in C++17 and exposed through pybind11.
+
+```mermaid
+flowchart TD
+    N[Research notebooks] --> P[Python package]
+    P --> C[C++17 numerical core]
+    P --> R[Research outputs]
+    T[Tests] -.-> P
+    T -.-> C
 ```
+
+| Component | Source | Responsibility |
+| --- | --- | --- |
+| Data and mortality | [`data.py`](scripts/longevity_risk/longevity_risk/data.py), [`lee_carter.py`](scripts/longevity_risk/longevity_risk/lee_carter.py), [`multipopulation.py`](scripts/longevity_risk/longevity_risk/multipopulation.py) | Mortality data, estimation and coherent population projections. |
+| Valuation | [`curves.py`](scripts/longevity_risk/longevity_risk/curves.py), [`life_table.py`](scripts/longevity_risk/longevity_risk/life_table.py), [`portfolio.py`](scripts/longevity_risk/longevity_risk/portfolio.py) | Discounting, survival probabilities and annuity portfolios. |
+| Risk and capital | [`simulation.py`](scripts/longevity_risk/longevity_risk/simulation.py), [`solvency.py`](scripts/longevity_risk/longevity_risk/solvency.py) | Longevity simulations and capital requirements. |
+| Numerical core | [C++ source](scripts/longevity_risk/cpp/) | Numerical kernels and native bindings. |
+| Visualisation | [`figstyle.py`](scripts/longevity_risk/longevity_risk/figstyle.py), [`readme_figures.py`](scripts/longevity_risk/longevity_risk/readme_figures.py) | Figure styling and reproducible research outputs. |
+| Validation suite | [Python tests](tests/longevity_risk/), [C++ tests](scripts/longevity_risk/cpp/tests/) | Numerical and implementation checks. |
+
+Implementation and installation details: [package documentation](scripts/longevity_risk/README.md).
 
 ## Getting started
 
